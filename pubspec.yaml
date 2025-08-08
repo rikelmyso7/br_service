@@ -50,6 +50,7 @@ dependencies:
   rxdart: ^0.28.0
   desktop_drop: ^0.6.1
   cross_file: ^0.3.4+2
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
