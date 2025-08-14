@@ -24,6 +24,22 @@ class StateContent extends StatelessWidget {
           case InitialState:
             return const InitialView();
 
+          case FileLoadingState:
+            final loading = state as FileLoadingState;
+            return _buildLoadingView(
+              title: 'Carregando Arquivo',
+              message: loading.message,
+              icon: CupertinoIcons.doc_text,
+            );
+
+          case ValidationLoadingState:
+            final loading = state as ValidationLoadingState;
+            return _buildLoadingView(
+              title: 'Analisando Arquivo',
+              message: loading.message,
+              icon: CupertinoIcons.checkmark_shield,
+            );
+
           case FilePreviewState:
             final preview = state as FilePreviewState;
             return FilePreviewView(excelData: preview.excelData, filePath: preview.filePath);
@@ -55,6 +71,77 @@ class StateContent extends StatelessWidget {
             return const Center(child: Text('Estado desconhecido'));
         }
       },
+    );
+  }
+
+  Widget _buildLoadingView({
+    required String title,
+    required String message,
+    required IconData icon,
+  }) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemGreen.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: CupertinoColors.systemGreen.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 48,
+                  color: CupertinoColors.systemGreen,
+                ),
+                const SizedBox(height: 16),
+                const CupertinoActivityIndicator(radius: 12),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: CupertinoColors.label,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: CupertinoColors.secondaryLabel,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.systemGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Processando em segundo plano...',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: CupertinoColors.systemGreen,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

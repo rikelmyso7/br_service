@@ -1,3 +1,5 @@
+import '../../models/processing_filters.dart';
+
 abstract class FileProcessorEvent {
   const FileProcessorEvent();
 }
@@ -13,9 +15,18 @@ class ProceedToValidationEvent extends FileProcessorEvent {
 
 class StartProcessingEvent extends FileProcessorEvent {
   final String outputDir;
-  const StartProcessingEvent(this.outputDir);
+  final ProcessingFilters? filters;
+  const StartProcessingEvent(this.outputDir, {this.filters});
 }
 
 class ResetEvent extends FileProcessorEvent {
   const ResetEvent();
+}
+
+class BackToFilePreviewEvent extends FileProcessorEvent {
+  const BackToFilePreviewEvent();
+}
+
+class BackToValidationEvent extends FileProcessorEvent {
+  const BackToValidationEvent();
 }

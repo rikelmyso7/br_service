@@ -15,34 +15,57 @@ class FilePreviewView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          context.read<FileProcessorBloc>().add(
+            const ProceedToValidationEvent(),
+          );
+        },
+        backgroundColor: Colors.green,
+        label: Row(
           children: [
-            Text(
-              'Visualização: ${excelData.fileName}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                context.read<FileProcessorBloc>().add(
-                  const ProceedToValidationEvent(),
-                );
-              },
-              label: const Text(
-                'Continuar',
-                style: TextStyle(color: Colors.green),
-              ),
-              icon: const Icon(Icons.arrow_forward, color: Colors.green),
-              iconAlignment: IconAlignment.end,
-            ),
+            const Text('Continuar', style: TextStyle(color: Colors.white)),
+            SizedBox(width: 5),
+            const Icon(Icons.arrow_forward, color: Colors.white, size: 18),
           ],
         ),
-        const SizedBox(height: 16),
-        Expanded(child: ExcelViewer(filePath: filePath)),
-      ],
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endContained,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Visualização: ${excelData.fileName}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[400],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                ),
+                onPressed: () {
+                  context.read<FileProcessorBloc>().add(const ResetEvent());
+                },
+                icon: const Icon(Icons.home),
+                label: const Text('Novo processamento'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(child: ExcelViewer(filePath: filePath)),
+        ],
+      ),
     );
   }
 }

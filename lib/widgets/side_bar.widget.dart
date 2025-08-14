@@ -10,11 +10,12 @@ class Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 260,
+      width: MediaQuery.of(context).size.width > 600 ? 260 : 200,
       color: const Color(0xFF007547),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Image.asset('lib/assets/br.png'),
           const SizedBox(height: 28),

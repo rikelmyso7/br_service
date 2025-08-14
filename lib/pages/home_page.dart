@@ -12,7 +12,10 @@ class HomePage extends StatelessWidget {
     return Scaffold(
       body: Row(
         children: [
-          Sidebar(),
+          SizedBox(
+            width: 250,
+            child: Sidebar(),
+          ),
           VerticalDivider(width: 1),
           Expanded(child: ContentArea()),
         ],

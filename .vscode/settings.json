@@ -1,4 +1,5 @@
 {
   "java.compile.nullAnalysis.mode": "automatic",
-  "dart.flutterSdkPath": ".fvm/versions/3.32.8"
+  "dart.flutterSdkPath": ".fvm/versions/3.32.8",
+  "java.configuration.updateBuildConfiguration": "automatic"
 }
