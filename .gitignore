@@ -3,6 +3,7 @@
 *.log
 *.pyc
 *.swp
+*.iss
 .DS_Store
 .atom/
 .build/
@@ -11,6 +12,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+.claude
 
 # IntelliJ related
 *.iml
@@ -46,3 +48,5 @@ app.*.map.json
 
 # FVM Version Cache
 .fvm/
+
+/installer
