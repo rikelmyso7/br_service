@@ -1,8 +1,8 @@
 import 'package:br_service_ui/bloc/events/file_events_bloc.dart';
 import 'package:br_service_ui/bloc/file_processor_bloc.dart';
+import 'package:br_service_ui/utils/responsive_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:desktop_drop/desktop_drop.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -99,9 +99,14 @@ class _InitialViewState extends State<InitialView>
                 }
               }
             },
-            child: Container(
-              width: double.infinity,
-              constraints: const BoxConstraints(maxWidth: 500, minHeight: 300),
+            child: ResponsiveContainer(
+              // esse Container
+              fixedDesktopWidth: 500,
+              tabletWidthPercentage: 0.7,
+              mobileWidthPercentage: 0.9,
+              fixedHeight: 450,
+              heightPercentage: 0.8,
+              enableScrolling: true,
               decoration: BoxDecoration(
                 color: _isDragging ? Colors.green[50] : Colors.white,
                 borderRadius: BorderRadius.circular(16),

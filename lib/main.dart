@@ -2,6 +2,7 @@
 import 'package:br_service_ui/pages/home_page.dart';
 import 'package:br_service_ui/repository/file_repository_impl.dart';
 import 'package:br_service_ui/utils/error_handler.dart';
+import 'package:br_service_ui/widgets/update_notification_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
@@ -60,7 +61,9 @@ class MyApp extends StatelessWidget {
       ),
       home: BlocProvider(
         create: (context) => FileProcessorBloc(FileRepositoryImpl()),
-        child: HomePage(),
+        child: AutoUpdateChecker(
+          child: HomePage(),
+        ),
       ),
     );
   }
