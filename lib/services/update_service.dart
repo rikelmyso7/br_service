@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive_io.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:process_run/process_run.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// Callback para atualizações de progresso do download
 typedef ProgressCallback = void Function(double progress, String status);
@@ -14,15 +15,35 @@ typedef ProgressCallback = void Function(double progress, String status);
 class UpdateService {
   static const String _owner = 'rikelmyso7'; // Substitua pelo seu usuário GitHub
   static const String _repo = 'br_service'; // Substitua pelo nome do repositório
-  static const String _currentVersion = '1.0.0'; // Versão atual do app
+  static String? _cachedVersion;
+  
+  /// Obtém a versão atual do app do pubspec.yaml
+  static Future<String> _getCurrentVersion() async {
+    if (_cachedVersion != null) return _cachedVersion!;
+    
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      _cachedVersion = packageInfo.version;
+      return _cachedVersion!;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Erro ao obter versão do app: $e');
+      }
+      // Fallback para versão padrão se houver erro
+      _cachedVersion = '1.0.0';
+      return _cachedVersion!;
+    }
+  }
   
   /// Verifica se há uma nova versão disponível no GitHub
   static Future<UpdateInfo?> checkForUpdates() async {
     try {
+      final currentVersion = await _getCurrentVersion();
       final url = Uri.parse('https://api.github.com/repos/$_owner/$_repo/releases/latest');
       
       if (kDebugMode) {
         print('Verificando updates em: $url');
+        print('Versão atual: $currentVersion');
       }
       
       final response = await http.get(url, headers: {
@@ -35,7 +56,11 @@ class UpdateService {
         final latestVersion = data['tag_name'] as String;
         final downloadUrl = _getWindowsDownloadUrl(data['assets']);
         
-        if (downloadUrl != null && _isNewerVersion(latestVersion, _currentVersion)) {
+        if (kDebugMode) {
+          print('Versão mais recente: $latestVersion');
+        }
+        
+        if (downloadUrl != null && _isNewerVersion(latestVersion, currentVersion)) {
           return UpdateInfo(
             version: latestVersion,
             downloadUrl: downloadUrl,
@@ -263,7 +288,7 @@ class UpdateService {
   }
   
   /// Retorna a versão atual do app
-  static String get currentVersion => _currentVersion;
+  static Future<String> get currentVersion => _getCurrentVersion();
 }
 
 /// Informações sobre uma atualização disponível

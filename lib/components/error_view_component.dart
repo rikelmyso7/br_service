@@ -66,14 +66,12 @@ class ErrorView extends StatelessWidget {
                             color: Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Flexible(
-                            child: SingleChildScrollView(
-                              child: Text(
-                                details!,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'monospace',
-                                ),
+                          child: SingleChildScrollView(
+                            child: Text(
+                              details!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'monospace',
                               ),
                             ),
                           ),

@@ -1,5 +1,6 @@
 {
   "java.compile.nullAnalysis.mode": "automatic",
   "dart.flutterSdkPath": ".fvm/versions/3.32.8",
-  "java.configuration.updateBuildConfiguration": "automatic"
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "cmake.sourceDirectory": "C:/teste/v3/br_service/linux"
 }

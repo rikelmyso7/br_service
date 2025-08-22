@@ -1,12 +1,72 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:br_service_ui/widgets/update_test_widget.dart';
+import 'package:br_service_ui/services/update_service.dart';
+import 'package:br_service_ui/widgets/update_notification_widget.dart';
 
 import 'output_dir_button.dart';
 import 'file_picker_widget.dart';
 
-class Sidebar extends StatelessWidget {
+class Sidebar extends StatefulWidget {
   const Sidebar();
+
+  @override
+  State<Sidebar> createState() => _SidebarState();
+}
+
+class _SidebarState extends State<Sidebar> {
+  UpdateInfo? _availableUpdate;
+  bool _isChecking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForUpdates();
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (_isChecking) return;
+
+    setState(() {
+      _isChecking = true;
+    });
+
+    try {
+      final updateInfo = await UpdateService.checkForUpdates();
+      if (mounted) {
+        setState(() {
+          _availableUpdate = updateInfo;
+        });
+      }
+    } catch (e) {
+      // Ignorar erros silenciosamente
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isChecking = false;
+        });
+      }
+    }
+  }
+
+  void _showUpdateDialog() {
+    if (_availableUpdate == null) return;
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => Dialog(
+            child: Container(
+              width: 400,
+              padding: const EdgeInsets.all(16),
+              child: UpdateNotificationWidget(
+                updateInfo: _availableUpdate!,
+                onDismiss: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,32 +125,65 @@ class Sidebar extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          
-          // // Botão de teste de atualizações
-          // Container(
-          //   margin: const EdgeInsets.only(bottom: 16),
-          //   child: ElevatedButton.icon(
-          //     onPressed: () {
-          //       Navigator.of(context).push(
-          //         MaterialPageRoute(
-          //           builder: (context) => const UpdateTestWidget(),
-          //         ),
-          //       );
-          //     },
-          //     icon: const Icon(Icons.bug_report, size: 16),
-          //     label: const Text(
-          //       'Testar Updates',
-          //       style: TextStyle(fontSize: 12),
-          //     ),
-          //     style: ElevatedButton.styleFrom(
-          //       backgroundColor: Colors.white.withOpacity(0.1),
-          //       foregroundColor: Colors.white,
-          //       side: BorderSide(color: Colors.white.withOpacity(0.3)),
-          //       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-          //     ),
-          //   ),
-          // ),
-          
+
+          // Card de atualização (ocultar em telas pequenas)
+          if (_availableUpdate != null &&
+              (MediaQuery.of(context).size.width >= 800 &&
+                  MediaQuery.of(context).size.height >= 680))
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.system_update,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Atualização',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'v${_availableUpdate!.version}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _showUpdateDialog(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF007547),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        textStyle: const TextStyle(fontSize: 11),
+                      ),
+                      child: const Text('Atualizar'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           const Divider(color: Colors.white70),
           const Text(
             'Desenvolvido por\nRikelmy R.',

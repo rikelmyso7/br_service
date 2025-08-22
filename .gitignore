@@ -13,6 +13,7 @@
 .swiftpm/
 migrate_working_dir/
 .claude
+/installer
 
 # IntelliJ related
 *.iml
