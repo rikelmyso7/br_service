@@ -9,6 +9,7 @@ import '../bloc/states/completed_bloc.dart';
 import '../bloc/states/error_bloc.dart';
 import '../bloc/states/file_processor_bloc.dart';
 import '../bloc/states/processing_bloc.dart';
+import '../bloc/states/processing_completed_bloc.dart';
 import '../bloc/states/validation_processor_bloc.dart';
 import 'error_view_component.dart';
 import 'file_preview_component.dart';
@@ -26,7 +27,7 @@ class StateContent extends StatelessWidget {
 
           case FileLoadingState:
             final loading = state as FileLoadingState;
-            return _buildLoadingView(
+            return _buildCompactLoadingView(
               title: 'Carregando Arquivo',
               message: loading.message,
               icon: CupertinoIcons.doc_text,
@@ -34,7 +35,7 @@ class StateContent extends StatelessWidget {
 
           case ValidationLoadingState:
             final loading = state as ValidationLoadingState;
-            return _buildLoadingView(
+            return _buildCompactLoadingView(
               title: 'Analisando Arquivo',
               message: loading.message,
               icon: CupertinoIcons.checkmark_shield,
@@ -56,6 +57,15 @@ class StateContent extends StatelessWidget {
               currentOperation: processing.currentOperation,
             );
 
+          case ProcessingCompletedState:
+            final completed = state as ProcessingCompletedState;
+            return ProcessingView(
+              logs: completed.logs,
+              progress: 100,
+              currentOperation: 'Processamento concluído com sucesso!',
+              isCompleted: true,
+            );
+
           case ErrorState:
             final error = state as ErrorState;
             return ErrorView(
@@ -74,20 +84,22 @@ class StateContent extends StatelessWidget {
     );
   }
 
-  Widget _buildLoadingView({
+  Widget _buildCompactLoadingView({
     required String title,
     required String message,
     required IconData icon,
   }) {
-    return Center(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: CupertinoColors.systemGreen.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: CupertinoColors.systemGreen.withOpacity(0.3),
                 width: 1,
@@ -98,46 +110,46 @@ class StateContent extends StatelessWidget {
               children: [
                 Icon(
                   icon,
-                  size: 48,
+                  size: 32,
                   color: CupertinoColors.systemGreen,
                 ),
-                const SizedBox(height: 16),
-                const CupertinoActivityIndicator(radius: 12),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+                const CupertinoActivityIndicator(radius: 10),
+                const SizedBox(height: 12),
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 20,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: CupertinoColors.label,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   message,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 12,
                     color: CupertinoColors.secondaryLabel,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: CupertinoColors.systemGreen.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'Processando em segundo plano...',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: CupertinoColors.systemGreen,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
               ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemGreen.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Aguarde, processando dados...',
+              style: TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.systemGreen,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

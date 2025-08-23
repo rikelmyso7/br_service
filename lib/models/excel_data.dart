@@ -1,5 +1,6 @@
 import 'file_stats.dart';
 import 'processing_filters.dart';
+import 'invalid_doc_plano.dart';
 
 class ExcelData {
   final List<String> headers;
@@ -8,6 +9,7 @@ class ExcelData {
   final List<DocPlano> docPlanos;
   final FileStats? fileStats;
   final ProcessingFilters? processingFilters;
+  final List<InvalidDocPlano> invalidDocPlanos;
 
   const ExcelData({
     required this.headers,
@@ -16,5 +18,6 @@ class ExcelData {
     required this.docPlanos,
     this.fileStats,
     this.processingFilters,
+    this.invalidDocPlanos = const [],
   });
 }

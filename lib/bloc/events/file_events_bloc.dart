@@ -30,3 +30,7 @@ class BackToFilePreviewEvent extends FileProcessorEvent {
 class BackToValidationEvent extends FileProcessorEvent {
   const BackToValidationEvent();
 }
+
+class ProceedToCompletedEvent extends FileProcessorEvent {
+  const ProceedToCompletedEvent();
+}

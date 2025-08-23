@@ -13,7 +13,9 @@ import 'states/completed_bloc.dart';
 import 'states/error_bloc.dart';
 import 'states/file_processor_bloc.dart';
 import 'states/processing_bloc.dart';
+import 'states/processing_completed_bloc.dart';
 import 'states/validation_processor_bloc.dart';
+import '../models/invalid_doc_plano.dart';
 
 class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
   final FileRepository _repository;
@@ -24,6 +26,7 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
     on<SelectFileEvent>(_onFileSelected);
     on<ProceedToValidationEvent>(_onProceedToValidation);
     on<StartProcessingEvent>(_onStartProcessing);
+    on<ProceedToCompletedEvent>(_onProceedToCompleted);
     on<ResetEvent>(_onReset);
   }
 
@@ -108,6 +111,13 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
         print('   📅 Available dates: ${processingFilters.availableDates}');
       }
       
+      // Extrai os docPlanos inválidos dos dados detalhados
+      final invalidDocPlanos = _parseInvalidDocPlanos(detailedStats);
+      print('❌ DocPlanos inválidos encontrados: ${invalidDocPlanos.length}');
+      for (final invalid in invalidDocPlanos) {
+        print('   • ${invalid.docPlano} - ${invalid.motivo}');
+      }
+
       final updatedExcelData = ExcelData(
         fileName: _excelData!.fileName,
         headers: _excelData!.headers,
@@ -115,6 +125,7 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
         docPlanos: docPlanos,
         fileStats: fileStats,
         processingFilters: processingFilters,
+        invalidDocPlanos: invalidDocPlanos,
       );
 
       emit(ValidationState(
@@ -199,6 +210,18 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
     return result;
   }
 
+  // Extrai InvalidDocPlanos dos dados detalhados
+  List<InvalidDocPlano> _parseInvalidDocPlanos(Map<String, dynamic> detailedStats) {
+    final invalidData = detailedStats['invalidDocPlanos'] as List<dynamic>? ?? [];
+    return invalidData.map((item) {
+      final map = item as Map<String, dynamic>;
+      return InvalidDocPlano(
+        docPlano: map['docPlano'] as String,
+        motivo: map['motivo'] as String,
+      );
+    }).toList();
+  }
+
   // Cria FileStats a partir dos dados detalhados
   FileStats _createFileStats(Map<String, dynamic> detailedStats) {
     final countsMap = detailedStats['countsPerDocPlano'] as Map<String, int>;
@@ -258,7 +281,11 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
             return ErrorState(error.message, error.details);
 
           case CompletedEvent:
-            return CompletedState(event.outputDir);
+            return ProcessingCompletedState(
+              filePath: currentState.filePath,
+              outputDir: event.outputDir,
+              logs: currentState.logs,
+            );
 
           default:
             return currentState;
@@ -267,6 +294,14 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
       onError: (error, stackTrace) =>
           ErrorState('Erro inesperado', error.toString()),
     );
+  }
+
+  void _onProceedToCompleted(
+      ProceedToCompletedEvent event, Emitter<FileProcessorState> emit) {
+    final currentState = state;
+    if (currentState is ProcessingCompletedState) {
+      emit(CompletedState(currentState.outputDir));
+    }
   }
 
   void _onReset(ResetEvent event, Emitter<FileProcessorState> emit) {

@@ -10,6 +10,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
 
 import '../models/excel_data.dart';
+import '../models/invalid_doc_plano.dart';
 import '../models/process_event.dart';
 import '../models/processing_filters.dart';
 import '../models/validation_item.dart';
@@ -232,6 +233,17 @@ class FileRepositoryImpl implements FileRepository {
         print('   🔍 Keys containing "data": $possibleKeys');
       }
 
+      // Captura os docPlanos inválidos do output do CLI
+      final invalidDocPlanos = _extractInvalidDocPlanos(out + err);
+      map['invalidDocPlanos'] = invalidDocPlanos.map((invalid) => {
+        'docPlano': invalid.docPlano,
+        'motivo': invalid.motivo,
+      }).toList();
+      print('📋 DocPlanos inválidos encontrados: ${invalidDocPlanos.length}');
+      for (final invalid in invalidDocPlanos) {
+        print('   ❌ ${invalid.docPlano} - ${invalid.motivo}');
+      }
+
       // Salva os dados do CLI para uso posterior
       _lastCliData = Map<String, dynamic>.from(map);
       _lastAnalyzedFile = path;
@@ -246,6 +258,48 @@ class FileRepositoryImpl implements FileRepository {
       print('❌ Erro ao parsear JSON de opções: $e');
       throw Exception('JSON inválido retornado pelo CLI: $e');
     }
+  }
+
+  List<InvalidDocPlano> _extractInvalidDocPlanos(String cliOutput) {
+    final invalidDocPlanosMap = <String, List<String>>{}; // docPlano -> lista de motivos
+    final lines = cliOutput.split('\n');
+    
+    for (final line in lines) {
+      // Procura por padrões de blocos inválidos nos logs
+      if (line.contains('possui 0 contratos válidos')) {
+        // Exemplo: "Bloco ADTC-1.04.01.07 possui 0 contratos válidos."
+        final match = RegExp(r'Bloco\s+([A-Z-]+\d+(?:\.\d+)*)\s+possui 0 contratos válidos').firstMatch(line);
+        if (match != null) {
+          final docPlano = match.group(1)!;
+          invalidDocPlanosMap.putIfAbsent(docPlano, () => []).add('Sem contratos válidos');
+        }
+      } else if (line.contains('não possui dados válidos (todos zerados)')) {
+        // Exemplo: "Bloco ADTC-1.04.01.07 não possui dados válidos (todos zerados)"
+        final match = RegExp(r'Bloco\s+([A-Z-]+\d+(?:\.\d+)*)\s+não possui dados válidos').firstMatch(line);
+        if (match != null) {
+          final docPlano = match.group(1)!;
+          invalidDocPlanosMap.putIfAbsent(docPlano, () => []).add('Dados zerados');
+        }
+      } else if (line.contains('Bloco inválido ou vazio')) {
+        // Exemplo: "Bloco inválido ou vazio para REG-1.04.01.08 (coluna 8)."
+        final match = RegExp(r'Bloco inválido ou vazio para\s+([A-Z-]+\d+(?:\.\d+)*(?:\.\d+)*)').firstMatch(line);
+        if (match != null) {
+          final docPlano = match.group(1)!;
+          invalidDocPlanosMap.putIfAbsent(docPlano, () => []).add('Bloco inválido ou vazio');
+        }
+      }
+    }
+    
+    // Converte o map em lista, consolidando os motivos
+    final invalidDocPlanos = <InvalidDocPlano>[];
+    invalidDocPlanosMap.forEach((docPlano, motivos) {
+      // Remove duplicatas e junta os motivos com " | "
+      final motivosUnicos = motivos.toSet().toList();
+      final motivoConsolidado = motivosUnicos.join(' | ');
+      invalidDocPlanos.add(InvalidDocPlano(docPlano: docPlano, motivo: motivoConsolidado));
+    });
+    
+    return invalidDocPlanos;
   }
 
   // Extrai o primeiro objeto JSON bem-formado de um texto (balanceando chaves)
@@ -681,6 +735,7 @@ class FileRepositoryImpl implements FileRepository {
                   .toList(),
           'datesByDocument': processingFilters.datesByDocument,
         },
+        'invalidDocPlanos': cliData['invalidDocPlanos'] ?? [],
       };
     } catch (e) {
       log.severe('Erro ao obter estatísticas detalhadas: $e');
@@ -783,6 +838,9 @@ class FileRepositoryImpl implements FileRepository {
 
       final combinedStream = stdoutStream.mergeWith([stderrStream]);
 
+      int logCount = 0;
+      int currentProgress = 20; // Inicia em 20% após conexão
+      
       await for (final line in combinedStream) {
         if (controller.isClosed) break;
 
@@ -796,6 +854,13 @@ class FileRepositoryImpl implements FileRepository {
             if (event is ErrorEvent) break;
           } else {
             controller.add(LogEvent(line));
+            
+            // Simula progresso baseado nos logs recebidos
+            logCount++;
+            if (logCount % 3 == 0 && currentProgress < 90) { // A cada 3 logs, aumenta o progresso
+              currentProgress = (currentProgress + 5).clamp(20, 90);
+              controller.add(ProgressEvent(currentProgress, 'Processando dados... ($logCount logs)'));
+            }
           }
         } catch (e, stackTrace) {
           log.severe('❌ Erro ao processar linha "$line": $e', e, stackTrace);
@@ -837,7 +902,6 @@ class FileRepositoryImpl implements FileRepository {
 
   /// Converte data de DD/MM/YYYY (CLI) para YYYY-MM-DD (ISO)
   String _convertDateFromCli(String cliDate) {
-    print('🔄 Convertendo data: $cliDate');
     try {
       final parts = cliDate.split('/');
       if (parts.length == 3) {
@@ -845,7 +909,6 @@ class FileRepositoryImpl implements FileRepository {
         final month = parts[1].padLeft(2, '0');
         final year = parts[2];
         final converted = '$year-$month-$day';
-        print('   ✅ Convertido para: $converted');
         return converted;
       }
     } catch (e) {

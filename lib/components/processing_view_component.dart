@@ -1,17 +1,22 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../bloc/file_processor_bloc.dart';
+import '../bloc/events/file_events_bloc.dart';
 import '../models/process_event.dart';
 
 class ProcessingView extends StatelessWidget {
   final List<LogEvent> logs;
   final int progress;
   final String currentOperation;
+  final bool isCompleted;
 
   const ProcessingView({
     required this.logs,
     required this.progress,
     required this.currentOperation,
+    this.isCompleted = false,
   });
 
   @override
@@ -52,9 +57,7 @@ class ProcessingView extends StatelessWidget {
                           ),
                           Text(
                             currentOperation,
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                            ),
+                            style: TextStyle(color: Colors.grey.shade600),
                           ),
                         ],
                       ),
@@ -63,17 +66,19 @@ class ProcessingView extends StatelessWidget {
                       width: 60,
                       height: 60,
                       child: CircularProgressIndicator(
-                        value: progress / 100,
+                        value: progress / 100.0,
                         strokeWidth: 6,
                         backgroundColor: Colors.grey.shade200,
+                        color: Colors.green,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 LinearProgressIndicator(
-                  value: progress / 100,
+                  value: progress / 100.0,
                   backgroundColor: Colors.grey.shade200,
+                  color: Colors.green,
                   minHeight: 8,
                 ),
               ],
@@ -87,44 +92,78 @@ class ProcessingView extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Expanded(
-          child: Card(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: logs
-                      .map((log) => Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '[${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}]',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 12,
-                                    fontFamily: 'monospace',
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    log.message,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontFamily: 'monospace',
+          child: Column(
+            children: [
+              Expanded(
+                child: Card(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children:
+                            logs
+                                .map(
+                                  (log) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '[${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}:${log.timestamp.second.toString().padLeft(2, '0')}]',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 12,
+                                            fontFamily: 'monospace',
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            log.message,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontFamily: 'monospace',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ))
-                      .toList(),
+                                )
+                                .toList(),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              if (isCompleted) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      context.read<FileProcessorBloc>().add(
+                        const ProceedToCompletedEvent(),
+                      );
+                    },
+                    icon: const Icon(Icons.arrow_forward),
+                    label: const Text('Próximo - Ver Resultados'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],

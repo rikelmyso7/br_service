@@ -38,7 +38,8 @@ class _ValidationViewState extends State<ValidationView> {
           selectedDates: [],
           availableDocuments: [],
           availableDates: [],
-          availableDocPlanos: [], datesByDocument: {},
+          availableDocPlanos: [],
+          datesByDocument: {},
         );
   }
 
@@ -210,7 +211,7 @@ class _ValidationViewState extends State<ValidationView> {
                                           vertical: 6,
                                         ),
                                         child: Text(
-                                          '${dp.documento} → ${dp.plano}',
+                                          '${dp.documento.split('-').first} + ${dp.plano} → ${dp.documento}',
                                           style: TextStyle(
                                             color: Colors.green.shade800,
                                             fontWeight: FontWeight.w500,
@@ -236,13 +237,58 @@ class _ValidationViewState extends State<ValidationView> {
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(
-                                'Total: ${widget.excelData.docPlanos.length} combinações Documento-Plano validadas',
-                                style: TextStyle(
-                                  color: Colors.green.shade700,
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
-                                ),
+                              child: Builder(
+                                builder: (context) {
+                                  final totalCombinations =
+                                      widget.excelData.docPlanos.length;
+                                  final invalidDocPlanos =
+                                      widget.excelData.invalidDocPlanos;
+                                  final validCount =
+                                      totalCombinations -
+                                      invalidDocPlanos.length;
+
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Total: $totalCombinations combinações válidas Documento-Plano',
+                                        style: TextStyle(
+                                          color: Colors.green.shade700,
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      if (invalidDocPlanos.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Combinações inválidas:',
+                                          style: TextStyle(
+                                            color: Colors.red.shade700,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        ...invalidDocPlanos.map(
+                                          (invalid) => Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 8,
+                                              bottom: 2,
+                                            ),
+                                            child: Text(
+                                              '• ${invalid.docPlano.split('-').first}-${invalid.docPlano.split('-').skip(1).join('-')} - ${invalid.motivo}',
+                                              style: TextStyle(
+                                                color: Colors.red.shade600,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
                               ),
                             ),
                           ],

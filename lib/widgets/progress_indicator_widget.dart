@@ -7,6 +7,7 @@ import '../bloc/states/completed_bloc.dart';
 import '../bloc/states/error_bloc.dart';
 import '../bloc/states/file_processor_bloc.dart';
 import '../bloc/states/processing_bloc.dart';
+import '../bloc/states/processing_completed_bloc.dart';
 import '../bloc/states/validation_processor_bloc.dart';
 
 class ProgressIndicatorWidget extends StatefulWidget {
@@ -62,7 +63,7 @@ class _ProgressIndicatorWidgetState extends State<ProgressIndicatorWidget>
   Widget build(BuildContext context) {
     return BlocBuilder<FileProcessorBloc, FileProcessorState>(
       builder: (context, state) {
-        int currentStep = 0;
+        int currentStep = 1;
         bool hasError = false;
         String statusMessage = 'Aguardando início...';
 
@@ -80,8 +81,12 @@ class _ProgressIndicatorWidgetState extends State<ProgressIndicatorWidget>
             currentStep = 3;
             statusMessage = 'Processando e gerando arquivos';
             break;
-          case ErrorState:
+          case ProcessingCompletedState:
             currentStep = 4;
+            statusMessage = 'Processamento concluído - revise os logs';
+            break;
+          case ErrorState:
+            currentStep = 5;
             hasError = true;
             statusMessage = 'Erro durante o processamento';
             break;
