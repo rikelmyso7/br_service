@@ -51,10 +51,14 @@ class StateContent extends StatelessWidget {
 
           case ProcessingState:
             final processing = state as ProcessingState;
+            // Verifica se há erro indicado no currentOperation ou logs
+            final hasError = processing.currentOperation.toLowerCase().contains('erro') ||
+                           processing.logs.any((log) => log.message.toLowerCase().contains('erro'));
             return ProcessingView(
               logs: processing.logs,
               progress: processing.progress,
               currentOperation: processing.currentOperation,
+              hasError: hasError,
             );
 
           case ProcessingCompletedState:
@@ -68,10 +72,22 @@ class StateContent extends StatelessWidget {
 
           case ErrorState:
             final error = state as ErrorState;
-            return ErrorView(
-              message: error.message,
-              details: error.details,
-            );
+            // Se há logs (foi durante processamento), mostra ProcessingView com erro
+            // Se não há logs, mostra ErrorView normal
+            if (error is ErrorStateWithLogs) {
+              return ProcessingView(
+                logs: error.logs,
+                progress: error.progress,
+                currentOperation: error.message,
+                hasError: true,
+                isCompleted: true,
+              );
+            } else {
+              return ErrorView(
+                message: error.message,
+                details: error.details,
+              );
+            }
 
           case CompletedState:
             final completed = state as CompletedState;

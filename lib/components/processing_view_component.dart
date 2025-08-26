@@ -11,12 +11,14 @@ class ProcessingView extends StatelessWidget {
   final int progress;
   final String currentOperation;
   final bool isCompleted;
+  final bool hasError;
 
   const ProcessingView({
     required this.logs,
     required this.progress,
     required this.currentOperation,
     this.isCompleted = false,
+    this.hasError = false,
   });
 
   @override
@@ -26,11 +28,18 @@ class ProcessingView extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Icon(Icons.settings, color: Colors.green),
+            Icon(
+              hasError ? Icons.error : Icons.settings,
+              color: hasError ? Colors.red : Colors.green,
+            ),
             const SizedBox(width: 8),
-            const Text(
-              'Processando arquivo...',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              hasError ? 'Erro no processamento!' : 'Processando arquivo...',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: hasError ? Colors.red : null,
+              ),
             ),
           ],
         ),
@@ -49,10 +58,10 @@ class ProcessingView extends StatelessWidget {
                         children: [
                           Text(
                             '$progress%',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                              color: hasError ? Colors.red : Colors.green,
                             ),
                           ),
                           Text(
@@ -65,11 +74,22 @@ class ProcessingView extends StatelessWidget {
                     SizedBox(
                       width: 60,
                       height: 60,
-                      child: CircularProgressIndicator(
-                        value: progress / 100.0,
-                        strokeWidth: 6,
-                        backgroundColor: Colors.grey.shade200,
-                        color: Colors.green,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          (isCompleted || hasError)
+                              ? Icon(
+                                hasError ? Icons.close : Icons.check,
+                                color: hasError ? Colors.red : Colors.green,
+                              )
+                              : Icon(Icons.timer, color: Colors.grey.shade400),
+                          CircularProgressIndicator(
+                            value: progress / 100.0,
+                            strokeWidth: 6,
+                            backgroundColor: Colors.grey.shade200,
+                            color: hasError ? Colors.red : Colors.green,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -78,7 +98,7 @@ class ProcessingView extends StatelessWidget {
                 LinearProgressIndicator(
                   value: progress / 100.0,
                   backgroundColor: Colors.grey.shade200,
-                  color: Colors.green,
+                  color: hasError ? Colors.red : Colors.green,
                   minHeight: 8,
                 ),
               ],
@@ -139,21 +159,29 @@ class ProcessingView extends StatelessWidget {
                   ),
                 ),
               ),
-              if (isCompleted) ...[
+              if (isCompleted || hasError) ...[
                 const SizedBox(height: 16),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      context.read<FileProcessorBloc>().add(
-                        const ProceedToCompletedEvent(),
-                      );
+                      if (hasError) {
+                        // Navegar para tela de erro
+                        context.read<FileProcessorBloc>().add(
+                          const ProceedToErrorEvent(),
+                        );
+                      } else {
+                        context.read<FileProcessorBloc>().add(
+                          const ProceedToCompletedEvent(),
+                        );
+                      }
                     },
-                    icon: const Icon(Icons.arrow_forward),
-                    label: const Text('Próximo - Ver Resultados'),
+                    icon: Icon(hasError ? Icons.error : Icons.arrow_forward),
+                    label: Text(hasError ? 'Ver Erros' : 'Ver Resultados'),
+                    iconAlignment: IconAlignment.end,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
+                      backgroundColor: hasError ? Colors.red : Colors.green,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(

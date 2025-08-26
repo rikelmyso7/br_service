@@ -807,7 +807,10 @@ class FileRepositoryImpl implements FileRepository {
         exe.path,
         args,
         runInShell: true,
-        environment: {'PYTHONIOENCODING': 'utf-8'},
+        environment: {
+          'PYTHONIOENCODING': 'utf-8',
+          'CHCP': '65001', // UTF-8 no Windows
+        },
       );
 
       if (_currentProcess == null) {

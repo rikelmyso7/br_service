@@ -27,6 +27,7 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
     on<ProceedToValidationEvent>(_onProceedToValidation);
     on<StartProcessingEvent>(_onStartProcessing);
     on<ProceedToCompletedEvent>(_onProceedToCompleted);
+    on<ProceedToErrorEvent>(_onProceedToError);
     on<ResetEvent>(_onReset);
   }
 
@@ -278,7 +279,12 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
 
           case ErrorEvent:
             final error = processEvent as ErrorEvent;
-            return ErrorState(error.message, error.details);
+            return ErrorStateWithLogs(
+              error.message, 
+              currentState.logs, 
+              currentState.progress, 
+              error.details
+            );
 
           case CompletedEvent:
             return ProcessingCompletedState(
@@ -301,6 +307,15 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
     final currentState = state;
     if (currentState is ProcessingCompletedState) {
       emit(CompletedState(currentState.outputDir));
+    }
+  }
+
+  void _onProceedToError(
+      ProceedToErrorEvent event, Emitter<FileProcessorState> emit) {
+    final currentState = state;
+    if (currentState is ErrorState) {
+      // Mantém o estado de erro atual
+      emit(currentState);
     }
   }
 
