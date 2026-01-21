@@ -50,4 +50,6 @@ app.*.map.json
 # FVM Version Cache
 .fvm/
 
-/installer
+# CLI executaveis 
+lib/assets/br_service_cli.exe
+lib/assets/br_service_cli

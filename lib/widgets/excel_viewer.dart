@@ -126,7 +126,7 @@ class _ExcelViewerState extends State<ExcelViewer> {
         int rowsPerPage = _pickInitialRowsPerPage(res.dataRowCount);
 
         return Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.only(bottom: 16),
           child: Card(
             elevation: 4,
             clipBehavior: Clip.antiAlias,
@@ -218,10 +218,12 @@ class _ExcelViewerState extends State<ExcelViewer> {
   }
 
   int _pickInitialRowsPerPage(int total) {
+    // Lazy loading: começa com páginas menores para arquivos grandes
     if (total <= 25) return 25;
-    if (total <= 50) return 50;
-    if (total <= 100) return 100;
-    return 200;
+    if (total <= 100) return 50;
+    if (total <= 1000) return 100;
+    // Arquivos muito grandes: páginas menores para melhor performance
+    return 100;
   }
 }
 

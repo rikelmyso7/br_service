@@ -33,9 +33,13 @@ class ValidationLoadingState extends FileProcessorState {
 class FilePreviewState extends FileProcessorState {
   final String filePath;
   final ExcelData excelData;
+  final List<String> numericSheetNames;
+  final Map<String, dynamic>? contasAnalysis;
 
   const FilePreviewState({
     required this.filePath,
     required this.excelData,
+    required this.numericSheetNames,
+    this.contasAnalysis,
   });
 }

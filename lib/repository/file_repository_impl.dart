@@ -16,20 +16,196 @@ import '../models/processing_filters.dart';
 import '../models/validation_item.dart';
 import 'file_repository.dart';
 
+/// Pool de processos CLI para reutilizar e reduzir overhead de spawn
+class _CLIProcessPool {
+  static const int maxIdleTime = 30; // segundos
+  Process? _idleProcess;
+  DateTime? _lastUsed;
+
+  bool get hasIdleProcess =>
+      _idleProcess != null &&
+      _lastUsed != null &&
+      DateTime.now().difference(_lastUsed!) < Duration(seconds: maxIdleTime);
+
+  void markUsed() {
+    _lastUsed = DateTime.now();
+  }
+
+  void setProcess(Process? proc) {
+    _idleProcess = proc;
+    _lastUsed = DateTime.now();
+  }
+
+  Process? getProcess() {
+    if (hasIdleProcess) {
+      final proc = _idleProcess;
+      _idleProcess = null;
+      return proc;
+    }
+    return null;
+  }
+
+  void cleanup() {
+    _idleProcess?.kill();
+    _idleProcess = null;
+  }
+}
+
 class FileRepositoryImpl implements FileRepository {
   final log = Logger('FileRepositoryImpl');
   Process? _currentProcess;
   StreamController<ProcessEvent>? _eventController;
+  final _CLIProcessPool _processPool = _CLIProcessPool();
 
   // Armazena dados do último arquivo analisado
   Map<String, dynamic>? _lastCliData;
   String? _lastAnalyzedFile;
+
+  /// Verifica se um arquivo está aberto/sendo usado por outro processo
+  Future<bool> _isFileInUse(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        return false;
+      }
+
+      // Tenta abrir o arquivo em modo de escrita exclusiva
+      final randomAccessFile = await file.open(mode: FileMode.append);
+      await randomAccessFile.close();
+      return false; // Arquivo não está em uso
+    } catch (e) {
+      // Se falhar ao abrir, provavelmente está em uso
+      return true;
+    }
+  }
+
+  /// Verifica se o arquivo pode ser processado (não está aberto)
+  Future<void> _checkFileAvailable(String filePath) async {
+    final isInUse = await _isFileInUse(filePath);
+    if (isInUse) {
+      throw Exception(
+        'O arquivo está aberto em outro programa. '
+        'Feche o arquivo no Excel (ou outro programa) e tente novamente.',
+      );
+    }
+  }
+
+  Future<void> swapAccountNumber(String path, String accountNumber) async {
+    await _checkFileAvailable(path);
+
+    final exe = await _getExecutable();
+    final args = ['--input', path, '--conta', accountNumber];
+
+    final proc = await Process.start(
+      exe.path,
+      args,
+      runInShell: true,
+      environment: {'PYTHONIOENCODING': 'utf-8'},
+    );
+    _currentProcess = proc;
+
+    final exitCode = await proc.exitCode;
+
+    if (exitCode != 0) {
+      throw Exception('Falha ao trocar número da conta (code=$exitCode):');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // NOVO: obter TODOS os dados em uma única chamada via CLI --get-all
+  // Combina: get-options + get-datas + get-contas
+  // ---------------------------------------------------------------------------
+  Future<Map<String, dynamic>> getAllData(String path) async {
+    log.info('📦 Obtendo todos os dados via CLI (--get-all): $path');
+    await _checkFileAvailable(path);
+    await _killCurrentProcess();
+
+    final exe = await _getExecutable();
+    final args = ['--input', path, '--get-all', '--quiet'];
+
+    final proc = await Process.start(
+      exe.path,
+      args,
+      runInShell: true,
+      environment: {'PYTHONIOENCODING': 'utf-8'},
+    );
+    _currentProcess = proc;
+
+    final stdoutBuffer = StringBuffer();
+    final stderrBuffer = StringBuffer();
+
+    final sub1 = proc.stdout
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .listen(stdoutBuffer.write);
+    final sub2 = proc.stderr
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .listen(stderrBuffer.write);
+
+    final exitCode = await proc.exitCode;
+    await sub1.cancel();
+    await sub2.cancel();
+
+    final out = stdoutBuffer.toString();
+    final err = stderrBuffer.toString();
+
+    print('📦 CLI get-all executado:');
+    print('   📤 Exit code: $exitCode');
+    print('   📄 Stdout length: ${out.length} chars');
+
+    if (exitCode != 0) {
+      print('❌ get-all falhou (code=$exitCode)');
+      throw Exception(
+        'Falha ao obter dados (code=$exitCode): $err',
+      );
+    }
+
+    try {
+      String jsonText;
+      if (out.startsWith('{')) {
+        final firstNewlineIndex = out.indexOf('\n');
+        if (firstNewlineIndex > 0) {
+          jsonText = out.substring(0, firstNewlineIndex);
+        } else {
+          jsonText = out;
+        }
+      } else {
+        throw Exception('Output não começa com JSON válido');
+      }
+
+      final map = json.decode(jsonText) as Map<String, dynamic>;
+      print('✅ JSON get-all parseado com sucesso');
+      print('   🗝️ Keys: ${map.keys.toList()}');
+      print('   📄 Has datas_por_documento: ${map.containsKey('datas_por_documento')}');
+      print('   📄 Has contas_ativas: ${map.containsKey('contas_ativas')}');
+      print('   📄 Has contas_inativas: ${map.containsKey('contas_inativas')}');
+
+      // Captura os docPlanos inválidos do output
+      final invalidDocPlanos = _extractInvalidDocPlanos(out + err);
+      map['invalidDocPlanos'] = invalidDocPlanos
+          .map((invalid) => {
+                'docPlano': invalid.docPlano,
+                'motivo': invalid.motivo,
+              })
+          .toList();
+
+      // Salva os dados do CLI para uso posterior
+      _lastCliData = Map<String, dynamic>.from(map);
+      _lastAnalyzedFile = path;
+      print('✅ Dados do CLI (--get-all) salvos para: $path');
+
+      return map;
+    } catch (e) {
+      print('❌ Erro ao parsear JSON de get-all: $e');
+      throw Exception('JSON inválido retornado pelo CLI get-all: $e');
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // NOVO: obter datas por documento via CLI --get-datas
   // ---------------------------------------------------------------------------
   Future<Map<String, dynamic>> getDatesByDocument(String path) async {
     log.info('🗓️ Obtendo datas por documento via CLI (--get-datas): $path');
+    await _checkFileAvailable(path);
     await _killCurrentProcess();
 
     final exe = await _getExecutable();
@@ -103,6 +279,7 @@ class FileRepositoryImpl implements FileRepository {
   @override
   Future<Map<String, dynamic>> analyzeFile(String path) async {
     log.info('🔎 Analisando arquivo via CLI (--get-options): $path');
+    await _checkFileAvailable(path);
     await _killCurrentProcess();
 
     final exe = await _getExecutable();
@@ -192,16 +369,22 @@ class FileRepositoryImpl implements FileRepository {
       );
     }
 
-    if (jsonText == null) {
-      print('❌ Não foi possível localizar o JSON de opções no output do CLI');
+    if (jsonText == null || jsonText.trim().isEmpty) {
+      log.severe('❌ Não foi possível localizar JSON válido no output do CLI');
+      log.severe('📄 stdout: ${out.substring(0, out.length > 200 ? 200 : out.length)}');
       throw Exception(
-        'Não foi possível localizar o JSON de opções no output do CLI.',
+        'Output do CLI não contém JSON válido. Verifique se o executável está correto.',
       );
     }
 
     try {
       print('🔧 Parseando JSON...');
       print('   📄 JSON to parse length: ${jsonText.length}');
+
+      // Valida se parece com JSON antes de tentar decode
+      if (!jsonText.trim().startsWith('{') || !jsonText.trim().endsWith('}')) {
+        throw FormatException('Texto não parece ser um JSON válido: ${jsonText.substring(0, 50)}...');
+      }
 
       final map = json.decode(jsonText) as Map<String, dynamic>;
       print('✅ JSON parseado com sucesso');
@@ -235,10 +418,15 @@ class FileRepositoryImpl implements FileRepository {
 
       // Captura os docPlanos inválidos do output do CLI
       final invalidDocPlanos = _extractInvalidDocPlanos(out + err);
-      map['invalidDocPlanos'] = invalidDocPlanos.map((invalid) => {
-        'docPlano': invalid.docPlano,
-        'motivo': invalid.motivo,
-      }).toList();
+      map['invalidDocPlanos'] =
+          invalidDocPlanos
+              .map(
+                (invalid) => {
+                  'docPlano': invalid.docPlano,
+                  'motivo': invalid.motivo,
+                },
+              )
+              .toList();
       print('📋 DocPlanos inválidos encontrados: ${invalidDocPlanos.length}');
       for (final invalid in invalidDocPlanos) {
         print('   ❌ ${invalid.docPlano} - ${invalid.motivo}');
@@ -261,44 +449,59 @@ class FileRepositoryImpl implements FileRepository {
   }
 
   List<InvalidDocPlano> _extractInvalidDocPlanos(String cliOutput) {
-    final invalidDocPlanosMap = <String, List<String>>{}; // docPlano -> lista de motivos
+    final invalidDocPlanosMap =
+        <String, List<String>>{}; // docPlano -> lista de motivos
     final lines = cliOutput.split('\n');
-    
+
     for (final line in lines) {
       // Procura por padrões de blocos inválidos nos logs
       if (line.contains('possui 0 contratos válidos')) {
         // Exemplo: "Bloco ADTC-1.04.01.07 possui 0 contratos válidos."
-        final match = RegExp(r'Bloco\s+([A-Z-]+\d+(?:\.\d+)*)\s+possui 0 contratos válidos').firstMatch(line);
+        final match = RegExp(
+          r'Bloco\s+([A-Z-]+\d+(?:\.\d+)*)\s+possui 0 contratos válidos',
+        ).firstMatch(line);
         if (match != null) {
           final docPlano = match.group(1)!;
-          invalidDocPlanosMap.putIfAbsent(docPlano, () => []).add('Sem contratos válidos');
+          invalidDocPlanosMap
+              .putIfAbsent(docPlano, () => [])
+              .add('Sem contratos válidos');
         }
       } else if (line.contains('não possui dados válidos (todos zerados)')) {
         // Exemplo: "Bloco ADTC-1.04.01.07 não possui dados válidos (todos zerados)"
-        final match = RegExp(r'Bloco\s+([A-Z-]+\d+(?:\.\d+)*)\s+não possui dados válidos').firstMatch(line);
+        final match = RegExp(
+          r'Bloco\s+([A-Z-]+\d+(?:\.\d+)*)\s+não possui dados válidos',
+        ).firstMatch(line);
         if (match != null) {
           final docPlano = match.group(1)!;
-          invalidDocPlanosMap.putIfAbsent(docPlano, () => []).add('Dados zerados');
+          invalidDocPlanosMap
+              .putIfAbsent(docPlano, () => [])
+              .add('Dados zerados');
         }
       } else if (line.contains('Bloco inválido ou vazio')) {
         // Exemplo: "Bloco inválido ou vazio para REG-1.04.01.08 (coluna 8)."
-        final match = RegExp(r'Bloco inválido ou vazio para\s+([A-Z-]+\d+(?:\.\d+)*(?:\.\d+)*)').firstMatch(line);
+        final match = RegExp(
+          r'Bloco inválido ou vazio para\s+([A-Z-]+\d+(?:\.\d+)*(?:\.\d+)*)',
+        ).firstMatch(line);
         if (match != null) {
           final docPlano = match.group(1)!;
-          invalidDocPlanosMap.putIfAbsent(docPlano, () => []).add('Bloco inválido ou vazio');
+          invalidDocPlanosMap
+              .putIfAbsent(docPlano, () => [])
+              .add('Bloco inválido ou vazio');
         }
       }
     }
-    
+
     // Converte o map em lista, consolidando os motivos
     final invalidDocPlanos = <InvalidDocPlano>[];
     invalidDocPlanosMap.forEach((docPlano, motivos) {
       // Remove duplicatas e junta os motivos com " | "
       final motivosUnicos = motivos.toSet().toList();
       final motivoConsolidado = motivosUnicos.join(' | ');
-      invalidDocPlanos.add(InvalidDocPlano(docPlano: docPlano, motivo: motivoConsolidado));
+      invalidDocPlanos.add(
+        InvalidDocPlano(docPlano: docPlano, motivo: motivoConsolidado),
+      );
     });
-    
+
     return invalidDocPlanos;
   }
 
@@ -351,7 +554,8 @@ class FileRepositoryImpl implements FileRepository {
   @override
   Future<ExcelData> loadExcelFile(String path) async {
     try {
-      final bytes = File(path).readAsBytesSync();
+      await _checkFileAvailable(path);
+      final bytes = await File(path).readAsBytes(); // Assíncrono para não bloquear
       final decoder = SpreadsheetDecoder.decodeBytes(bytes);
 
       if (!decoder.tables.containsKey('Layout')) {
@@ -401,6 +605,61 @@ class FileRepositoryImpl implements FileRepository {
       );
     } catch (e) {
       throw Exception('Erro ao ler arquivo Excel: $e');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Método para analisar contas ativas/inativas usando CLI --get-contas
+  // ---------------------------------------------------------------------------
+  Future<Map<String, dynamic>> getContasAnalysis(String filePath) async {
+    try {
+      print('🔍 Executando análise de contas CLI para: $filePath');
+      await _checkFileAvailable(filePath);
+      
+      final exe = await _getExecutable();
+      final args = ['--input', filePath, '--get-contas'];
+
+      final result = await Process.run(
+        exe.path,
+        args,
+        runInShell: true,
+        environment: {'PYTHONIOENCODING': 'utf-8'},
+      );
+
+      print('🔍 CLI getContasAnalysis executado:');
+      print('   📤 Exit code: ${result.exitCode}');
+      print('   📄 Stdout length: ${result.stdout.toString().length} chars');
+      
+      if (result.exitCode != 0) {
+        print('❌ CLI falhou: ${result.stderr}');
+        return {'erro': 'CLI falhou: ${result.stderr}'};
+      }
+
+      final output = result.stdout.toString().trim();
+      print('   📄 Stdout: $output');
+
+      // Parse do JSON retornado pelo CLI
+      try {
+        final jsonData = jsonDecode(output);
+        print('✅ JSON parseado com sucesso');
+        print('   🗝️ Keys: ${jsonData.keys.toList()}');
+        
+        if (jsonData.containsKey('contas_ativas')) {
+          print('   ✅ Contas ativas: ${jsonData['contas_ativas']}');
+        }
+        if (jsonData.containsKey('contas_inativas')) {
+          print('   ❌ Contas inativas: ${jsonData['contas_inativas']}');
+        }
+        
+        return jsonData;
+      } catch (e) {
+        print('❌ Erro ao fazer parse do JSON: $e');
+        return {'erro': 'Erro ao fazer parse do JSON: $e'};
+      }
+      
+    } catch (e) {
+      print('❌ Erro ao executar CLI getContasAnalysis: $e');
+      return {'erro': 'Erro ao executar CLI: $e'};
     }
   }
 
@@ -637,21 +896,20 @@ class FileRepositoryImpl implements FileRepository {
         '📅 Datas brutas do CLI (${datasRaw.length}): ${datasRaw.take(3).toList()}...',
       );
 
-      // Obtém datas por documento usando --get-datas
-      print('🗓️ Obtendo datas por documento via --get-datas...');
+      // Usa datas por documento dos dados cached (getAllData já inclui isso)
+      print('🗓️ Obtendo datas por documento dos dados cached...');
       Map<String, dynamic> datasPorDocumento = {};
-      try {
-        final datesData = await getDatesByDocument(filePath);
+      if (cliData.containsKey('datas_por_documento')) {
         datasPorDocumento =
-            (datesData['datas_por_documento'] as Map<String, dynamic>?) ?? {};
+            (cliData['datas_por_documento'] as Map<String, dynamic>?) ?? {};
         print(
-          '✅ Datas por documento obtidas: ${datasPorDocumento.keys.length} documentos',
+          '✅ Datas por documento obtidas do cache: ${datasPorDocumento.keys.length} documentos',
         );
         print(
           '🔍 Primeiros documentos: ${datasPorDocumento.keys.take(3).toList()}...',
         );
-      } catch (e) {
-        print('⚠️ Erro ao obter datas por documento: $e');
+      } else {
+        print('⚠️ datas_por_documento não encontrado nos dados cached');
         print('   📋 Continuando sem datas específicas por documento');
       }
 
@@ -701,6 +959,7 @@ class FileRepositoryImpl implements FileRepository {
         availableDates: datas,
         availableDocPlanos: docPlanos,
         datesByDocument: datesByDocument,
+        recordCountsByDocument: countsPerDocPlano,
       );
       print('✅ ProcessingFilters criado com:');
       print(
@@ -734,6 +993,7 @@ class FileRepositoryImpl implements FileRepository {
                   .map((dp) => {'documento': dp.documento, 'plano': dp.plano})
                   .toList(),
           'datesByDocument': processingFilters.datesByDocument,
+          'recordCountsByDocument': processingFilters.recordCountsByDocument,
         },
         'invalidDocPlanos': cliData['invalidDocPlanos'] ?? [],
       };
@@ -775,6 +1035,7 @@ class FileRepositoryImpl implements FileRepository {
     StreamController<ProcessEvent>? controller;
 
     try {
+      await _checkFileAvailable(input);
       await _killCurrentProcess();
       controller = StreamController<ProcessEvent>();
       _eventController = controller;
@@ -806,9 +1067,10 @@ class FileRepositoryImpl implements FileRepository {
       _currentProcess = await Process.start(
         exe.path,
         args,
-        runInShell: true,
+        runInShell: false, // Evita buffering adicional do shell
         environment: {
           'PYTHONIOENCODING': 'utf-8',
+          'PYTHONUNBUFFERED': '1', // CRÍTICO: Desabilita buffering do Python
           'CHCP': '65001', // UTF-8 no Windows
         },
       );
@@ -843,7 +1105,27 @@ class FileRepositoryImpl implements FileRepository {
 
       int logCount = 0;
       int currentProgress = 20; // Inicia em 20% após conexão
-      
+      int blocksProcessed = 0;
+      DateTime lastProgressUpdate = DateTime.now();
+      DateTime startTime = DateTime.now();
+
+      // Timer de heartbeat para atualizar progresso periodicamente
+      Timer? heartbeatTimer;
+      heartbeatTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+        if (controller == null || controller.isClosed) {
+          heartbeatTimer?.cancel();
+          return;
+        }
+        // Incrementa progresso lentamente baseado no tempo decorrido
+        final elapsed = DateTime.now().difference(startTime).inSeconds;
+        final timeBasedProgress = (20 + (elapsed * 2)).clamp(20, 85);
+        if (timeBasedProgress > currentProgress) {
+          currentProgress = timeBasedProgress;
+          controller.add(ProgressEvent(currentProgress, 'Processando... (${elapsed}s)'));
+        }
+      });
+
+      try {
       await for (final line in combinedStream) {
         if (controller.isClosed) break;
 
@@ -857,18 +1139,55 @@ class FileRepositoryImpl implements FileRepository {
             if (event is ErrorEvent) break;
           } else {
             controller.add(LogEvent(line));
-            
-            // Simula progresso baseado nos logs recebidos
             logCount++;
-            if (logCount % 3 == 0 && currentProgress < 90) { // A cada 3 logs, aumenta o progresso
-              currentProgress = (currentProgress + 5).clamp(20, 90);
-              controller.add(ProgressEvent(currentProgress, 'Processando dados... ($logCount logs)'));
+
+            // Detecção inteligente de progresso baseado em marcos
+            final lowerLine = line.toLowerCase();
+            int progressIncrement = 0;
+            String? operation;
+
+            // Marcos específicos do processamento
+            if (lowerLine.contains('carregando') || lowerLine.contains('lendo arquivo')) {
+              progressIncrement = 10;
+              operation = 'Carregando arquivo...';
+            } else if (lowerLine.contains('processando bloco') || lowerLine.contains('bloco ')) {
+              blocksProcessed++;
+              // Incremento menor por bloco (mais granular)
+              progressIncrement = 2;
+              operation = 'Processando blocos... ($blocksProcessed blocos)';
+            } else if (lowerLine.contains('salvando') || lowerLine.contains('gerando saída')) {
+              progressIncrement = 5;
+              operation = 'Salvando resultados...';
+            } else if (lowerLine.contains('validando') || lowerLine.contains('verificando')) {
+              progressIncrement = 3;
+              operation = 'Validando dados...';
+            } else if (lowerLine.contains('concluí') || lowerLine.contains('finalizado')) {
+              progressIncrement = 5;
+              operation = 'Finalizando...';
+            }
+
+            // Atualiza progresso se detectou um marco OU a cada segundo com logs
+            final now = DateTime.now();
+            final timeSinceLastUpdate = now.difference(lastProgressUpdate).inMilliseconds;
+
+            if (progressIncrement > 0 || (logCount % 5 == 0 && timeSinceLastUpdate > 500)) {
+              if (progressIncrement == 0) {
+                progressIncrement = 1; // Incremento mínimo para logs regulares
+                operation = 'Processando... ($logCount eventos)';
+              }
+
+              currentProgress = (currentProgress + progressIncrement).clamp(20, 95);
+              controller.add(ProgressEvent(currentProgress, operation ?? 'Processando...'));
+              lastProgressUpdate = now;
             }
           }
         } catch (e, stackTrace) {
           log.severe('❌ Erro ao processar linha "$line": $e', e, stackTrace);
           controller.add(LogEvent('Erro ao processar: $line'));
         }
+      }
+      } finally {
+        heartbeatTimer?.cancel();
       }
 
       final exitCode = await _currentProcess!.exitCode;
@@ -1008,6 +1327,7 @@ class FileRepositoryImpl implements FileRepository {
   void dispose() {
     log.info('🧹 Limpando FileRepositoryImpl...');
     _killCurrentProcess();
+    _processPool.cleanup();
     _lastCliData = null;
     _lastAnalyzedFile = null;
   }

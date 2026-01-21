@@ -5,6 +5,7 @@ class ProcessingFilters {
   final List<String> availableDates;
   final List<DocPlano> availableDocPlanos; // Mantém para compatibilidade
   final Map<String, List<String>> datesByDocument; // Datas disponíveis por documento
+  final Map<String, int> recordCountsByDocument; // Quantidade de registros por documento
 
   const ProcessingFilters({
     required this.selectedDocuments,
@@ -13,6 +14,7 @@ class ProcessingFilters {
     required this.availableDates,
     required this.availableDocPlanos,
     required this.datesByDocument,
+    this.recordCountsByDocument = const {},
   });
 
   ProcessingFilters copyWith({
@@ -22,6 +24,7 @@ class ProcessingFilters {
     List<String>? availableDates,
     List<DocPlano>? availableDocPlanos,
     Map<String, List<String>>? datesByDocument,
+    Map<String, int>? recordCountsByDocument,
   }) {
     return ProcessingFilters(
       selectedDocuments: selectedDocuments ?? this.selectedDocuments,
@@ -30,7 +33,19 @@ class ProcessingFilters {
       availableDates: availableDates ?? this.availableDates,
       availableDocPlanos: availableDocPlanos ?? this.availableDocPlanos,
       datesByDocument: datesByDocument ?? this.datesByDocument,
+      recordCountsByDocument: recordCountsByDocument ?? this.recordCountsByDocument,
     );
+  }
+
+  // Retorna a quantidade de registros para um documento
+  int getRecordCount(String document) {
+    return recordCountsByDocument[document] ?? 0;
+  }
+
+  // Retorna o total de registros selecionados
+  int get totalSelectedRecords {
+    if (selectedDocuments.isEmpty) return 0;
+    return selectedDocuments.fold(0, (sum, doc) => sum + getRecordCount(doc));
   }
 
   bool get hasSelections =>

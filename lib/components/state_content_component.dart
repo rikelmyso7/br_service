@@ -12,7 +12,7 @@ import '../bloc/states/processing_bloc.dart';
 import '../bloc/states/processing_completed_bloc.dart';
 import '../bloc/states/validation_processor_bloc.dart';
 import 'error_view_component.dart';
-import 'file_preview_component.dart';
+import 'file_preview_sheets_component.dart';
 import 'initial_view_component.dart';
 
 class StateContent extends StatelessWidget {
@@ -20,7 +20,12 @@ class StateContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<FileProcessorBloc, FileProcessorState>(
       builder: (context, state) {
-        print(state.runtimeType);
+        print('🔍 StateContent - Estado atual: ${state.runtimeType}');
+        if (state is FilePreviewState) {
+          print(
+            '🔍 StateContent - Planilhas numéricas: ${state.numericSheetNames}',
+          );
+        }
         switch (state.runtimeType) {
           case InitialState:
             return const InitialView();
@@ -43,17 +48,28 @@ class StateContent extends StatelessWidget {
 
           case FilePreviewState:
             final preview = state as FilePreviewState;
-            return FilePreviewView(excelData: preview.excelData, filePath: preview.filePath);
+            return FilePreviewSheets(
+              excelData: preview.excelData,
+              filePath: preview.filePath,
+              numericSheetNames: preview.numericSheetNames,
+              contasAnalysis: preview.contasAnalysis,
+            );
 
           case ValidationState:
             final validation = state as ValidationState;
-            return ValidationView(validationItems: validation.validationItems, excelData: validation.excelData,);
+            return ValidationView(
+              validationItems: validation.validationItems,
+              excelData: validation.excelData,
+            );
 
           case ProcessingState:
             final processing = state as ProcessingState;
             // Verifica se há erro indicado no currentOperation ou logs
-            final hasError = processing.currentOperation.toLowerCase().contains('erro') ||
-                           processing.logs.any((log) => log.message.toLowerCase().contains('erro'));
+            final hasError =
+                processing.currentOperation.toLowerCase().contains('erro') ||
+                processing.logs.any(
+                  (log) => log.message.toLowerCase().contains('erro'),
+                );
             return ProcessingView(
               logs: processing.logs,
               progress: processing.progress,
@@ -83,10 +99,7 @@ class StateContent extends StatelessWidget {
                 isCompleted: true,
               );
             } else {
-              return ErrorView(
-                message: error.message,
-                details: error.details,
-              );
+              return ErrorView(message: error.message, details: error.details);
             }
 
           case CompletedState:
@@ -124,11 +137,7 @@ class StateContent extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  icon,
-                  size: 32,
-                  color: CupertinoColors.systemGreen,
-                ),
+                Icon(icon, size: 32, color: CupertinoColors.systemGreen),
                 const SizedBox(height: 12),
                 const CupertinoActivityIndicator(radius: 10),
                 const SizedBox(height: 12),
@@ -150,22 +159,6 @@ class StateContent extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: CupertinoColors.systemGreen.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text(
-              'Aguarde, processando dados...',
-              style: TextStyle(
-                fontSize: 12,
-                color: CupertinoColors.systemGreen,
-                fontWeight: FontWeight.w500,
-              ),
             ),
           ),
         ],

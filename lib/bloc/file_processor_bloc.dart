@@ -1,5 +1,6 @@
 import 'package:br_service_ui/models/validation_item.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:logging/logging.dart';
 
 import '../models/excel_data.dart';
 import '../models/file_stats.dart';
@@ -18,6 +19,7 @@ import 'states/validation_processor_bloc.dart';
 import '../models/invalid_doc_plano.dart';
 
 class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
+  final log = Logger('FileProcessorBloc');
   final FileRepository _repository;
   String? _selectedFile;
   ExcelData? _excelData;
@@ -35,31 +37,60 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
       SelectFileEvent event, Emitter<FileProcessorState> emit) async {
     try {
       _selectedFile = event.filePath;
-      
+
       emit(FileLoadingState(
         filePath: event.filePath,
-        message: 'Carregando arquivo e executando análise CLI...',
+        message: 'Carregando arquivo e executando análise',
       ));
 
-      // Executa carregamento básico e análise CLI em paralelo
-      print('🔄 Iniciando carregamento e análise em paralelo...');
-      final futures = await Future.wait([
-        IsolateService.loadExcelFileInIsolate(event.filePath), // Carregamento básico
-        _repository.analyzeFile(event.filePath), // Análise CLI em background
+      // Executa carregamento Excel + getAllData em paralelo
+      // getAllData combina get-options + get-datas + get-contas em UMA única chamada CLI
+      log.info('Executando operações em paralelo: carregamento (isolate) + getAllData CLI');
+      final results = await Future.wait([
+        IsolateService.loadExcelFileInIsolate(event.filePath),
+        _repository.getAllData(event.filePath),
       ]);
-      
-      _excelData = futures[0] as ExcelData;
-      final cliData = futures[1] as Map<String, dynamic>;
-      
-      print('✅ Carregamento e análise CLI concluídos em paralelo');
-      print('📊 CLI Data keys: ${cliData.keys.join(", ")}');
-      print('📄 Documentos do CLI: ${cliData['documentos']}');
-      print('📅 Datas do CLI: ${cliData['datas']}');
-      
-      emit(FilePreviewState(
-        filePath: event.filePath,
-        excelData: _excelData!,
-      ));
+
+      _excelData = results[0] as ExcelData;
+      final cliData = results[1] as Map<String, dynamic>;
+
+      log.info('Todas as operações concluídas em paralelo (1 chamada CLI)');
+      log.fine('CLI Data keys: ${cliData.keys.join(", ")}');
+      log.fine('Documentos: ${cliData['documentos']}');
+      log.fine('Datas: ${cliData['datas']}');
+
+      // Extrair todas as contas (ativas + inativas) para o popup
+      // getAllData já inclui os dados de contas
+      final contasAtivas = (cliData['contas_ativas'] as Map<String, dynamic>?) ?? {};
+      final contasInativas = (cliData['contas_inativas'] as Map<String, dynamic>?) ?? {};
+
+      final todasContas = <String>[];
+      todasContas.addAll(contasAtivas.keys);
+      todasContas.addAll(contasInativas.keys);
+
+      log.fine('Contas encontradas: ${todasContas.length}');
+      log.fine('Ativas: ${contasAtivas.keys.toList()}');
+      log.fine('Inativas: ${contasInativas.keys.toList()}');
+
+      if (todasContas.isNotEmpty) {
+        log.info('Emitindo FilePreviewState com ${todasContas.length} contas');
+        emit(FilePreviewState(
+          filePath: event.filePath,
+          excelData: _excelData!,
+          numericSheetNames: todasContas,
+          contasAnalysis: {
+            'contas_ativas': contasAtivas,
+            'contas_inativas': contasInativas,
+          },
+        ));
+      } else {
+        log.info('Nenhuma conta encontrada, emitindo FilePreviewState vazio');
+        emit(FilePreviewState(
+          filePath: event.filePath,
+          excelData: _excelData!,
+          numericSheetNames: [],
+        ));
+      }
     } catch (e) {
       emit(ErrorState('Erro ao carregar arquivo', e.toString()));
     }
@@ -73,50 +104,50 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
       emit(ValidationLoadingState(
         filePath: _selectedFile!,
         excelData: _excelData!,
-        message: 'Validando dados com análise CLI...',
+        message: 'Validando dados com análise...',
       ));
       
-      print('🔍 Iniciando validação usando dados CLI já processados: $_selectedFile');
-      
+      log.info('Iniciando validação usando dados CLI cached');
+
       // Como a análise CLI já foi executada durante o carregamento, apenas usa os dados cached
       // Executa validação e estatísticas usando dados já processados
       final futures = await Future.wait([
         _repository.validateFile(_selectedFile!), // Thread principal - usa dados já salvos
         _repository.getDetailedFileStats(_selectedFile!), // Thread principal - precisa dos dados cached
       ]);
-      print('✅ Validação e estatísticas concluídas usando dados cached');
-      
+      log.info('Validação e estatísticas concluídas');
+
       final validationItems = futures[0] as List<ValidationItem>;
       final detailedStats = futures[1] as Map<String, dynamic>;
-      print('📋 ValidationItems: ${validationItems.length}');
-      print('📊 DetailedStats keys: ${detailedStats.keys.join(", ")}');
-      
+      log.fine('ValidationItems: ${validationItems.length}');
+      log.fine('DetailedStats keys: ${detailedStats.keys.join(", ")}');
+
       // Debug validation items
       for (int i = 0; i < validationItems.length; i++) {
         final item = validationItems[i];
-        print('   ✓ Validation $i: ${item.title} = ${item.isValid}');
+        log.finer('Validation $i: ${item.title} = ${item.isValid}');
       }
       
       final canProceed = validationItems.every((item) => item.isValid);
 
       // Cria ExcelData atualizado com dados do CLI
-      print('🔧 Reconstruindo ExcelData com dados do CLI...');
+      log.fine('Reconstruindo ExcelData com dados do CLI');
       final docPlanos = _parseDocPlanosFromStats(detailedStats);
       final fileStats = _createFileStats(detailedStats);
       final processingFilters = _parseProcessingFiltersFromStats(detailedStats);
-      
-      print('📄 DocPlanos reconstruídos: ${docPlanos.length}');
-      print('📊 ProcessingFilters: ${processingFilters != null ? "✅ Criado" : "❌ NULL"}');
+
+      log.fine('DocPlanos reconstruídos: ${docPlanos.length}');
+      log.fine('ProcessingFilters: ${processingFilters != null ? "Criado" : "NULL"}');
       if (processingFilters != null) {
-        print('   📄 Available docs: ${processingFilters.availableDocuments}');
-        print('   📅 Available dates: ${processingFilters.availableDates}');
+        log.finer('Available docs: ${processingFilters.availableDocuments}');
+        log.finer('Available dates: ${processingFilters.availableDates}');
       }
-      
+
       // Extrai os docPlanos inválidos dos dados detalhados
       final invalidDocPlanos = _parseInvalidDocPlanos(detailedStats);
-      print('❌ DocPlanos inválidos encontrados: ${invalidDocPlanos.length}');
+      log.info('DocPlanos inválidos encontrados: ${invalidDocPlanos.length}');
       for (final invalid in invalidDocPlanos) {
-        print('   • ${invalid.docPlano} - ${invalid.motivo}');
+        log.fine('${invalid.docPlano} - ${invalid.motivo}');
       }
 
       final updatedExcelData = ExcelData(
@@ -193,7 +224,19 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
       }
     });
     print('   📋 datesByDocument processed: ${datesByDocument.keys.length} documentos');
-    
+
+    // Extrai recordCountsByDocument
+    final recordCountsRaw = filtersData['recordCountsByDocument'] as Map<String, dynamic>? ?? {};
+    final Map<String, int> recordCountsByDocument = {};
+    recordCountsRaw.forEach((key, value) {
+      if (value is int) {
+        recordCountsByDocument[key] = value;
+      } else if (value is num) {
+        recordCountsByDocument[key] = value.toInt();
+      }
+    });
+    print('   📊 recordCountsByDocument: ${recordCountsByDocument.length} documentos');
+
     final result = ProcessingFilters(
       selectedDocuments: (filtersData['selectedDocuments'] as List<dynamic>?)?.cast<String>() ?? [],
       selectedDates: (filtersData['selectedDates'] as List<dynamic>?)?.cast<String>() ?? [],
@@ -201,6 +244,7 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
       availableDates: (filtersData['availableDates'] as List<dynamic>?)?.cast<String>() ?? [],
       availableDocPlanos: availableDocPlanos,
       datesByDocument: datesByDocument,
+      recordCountsByDocument: recordCountsByDocument,
     );
     
     print('✅ ProcessingFilters construído:');

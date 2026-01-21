@@ -123,8 +123,32 @@ class _ProcessingFiltersWidgetState extends State<ProcessingFiltersWidget> {
                 final isSelected = _currentFilters.selectedDocuments.contains(
                   doc,
                 );
+                final recordCount = _currentFilters.getRecordCount(doc);
                 return FilterChip(
-                  label: Text(doc),
+                  label: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(doc),
+                      if (recordCount > 0) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: isSelected ? Colors.green.shade600 : Colors.grey.shade400,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '$recordCount',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                   selected: isSelected,
                   onSelected: (selected) {
                     print('🔘 Documento clicado: $doc (selected: $selected)');
@@ -465,6 +489,10 @@ class _ProcessingFiltersWidgetState extends State<ProcessingFiltersWidget> {
     }
     if (_currentFilters.selectedDates.isNotEmpty) {
       parts.add('${_currentFilters.selectedDates.length} data(s)');
+    }
+    final totalRecords = _currentFilters.totalSelectedRecords;
+    if (totalRecords > 0) {
+      parts.add('~$totalRecords registro(s)');
     }
     return parts.join(', ');
   }

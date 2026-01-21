@@ -300,8 +300,10 @@ class StartProcessingEvent extends FileProcessorEvent {
 Future<ExcelData> loadExcelFile(String path);
 Future<List<ValidationItem>> validateFile(String filePath);
 Future<Map<String, dynamic>> analyzeFile(String path);
+Future<Map<String, dynamic>> getAllData(String path);  // Combina get-options + get-datas + get-contas
 Future<Map<String, dynamic>> getDetailedFileStats(String filePath);
 Stream<ProcessEvent> processFile(String inputPath, String outputDir, {ProcessingFilters? filters});
+Future<Map<String, dynamic>> getContasAnalysis(String path);
 ```
 
 ### **FileRepositoryImpl - Implementação Principal**
@@ -315,18 +317,20 @@ Stream<ProcessEvent> processFile(String inputPath, String outputDir, {Processing
 5. **Gerenciamento de Recursos:** Cleanup de processos e streams
 
 **Métodos Principais:**
-- `analyzeFile()` (linha 32): Análise via CLI com `--get-options`
-- `loadExcelFile()` (linha 117): Carregamento síncrono dos dados da planilha
-- `validateFile()` (linha 191): Validação unificada usando dados do CLI
-- `getDetailedFileStats()` (linha 333): Estatísticas detalhadas com cache
-- `processFile()` (linha 430): Execução do CLI com filtros opcionais
-- `hasCliDataFor()` (linha 168): Verifica se há dados salvos do CLI
-- `_getExecutable()` (linha 542): Extração/localização do executável CLI
+- `getAllData()`: Análise completa via CLI com `--get-all` (combina options + datas + contas em 1 chamada)
+- `analyzeFile()`: Análise via CLI com `--get-options`
+- `loadExcelFile()`: Carregamento síncrono dos dados da planilha
+- `validateFile()`: Validação unificada usando dados do CLI
+- `getDetailedFileStats()`: Estatísticas detalhadas com cache
+- `processFile()`: Execução do CLI com filtros opcionais
+- `hasCliDataFor()`: Verifica se há dados salvos do CLI
+- `_getExecutable()`: Extração/localização do executável CLI
 
-**Novos Recursos:**
-- **Cache de Dados CLI:** Armazena resultado de `analyzeFile()` para reutilização
+**Otimizações:**
+- **getAllData():** Uma única chamada CLI retorna todos os dados necessários (documentos, planos, datas, contas)
+- **Cache de Dados CLI:** Armazena resultado para reutilização entre validação e estatísticas
 - **Filtros de Processamento:** Suporte a filtros de documentos e datas
-- **Validação Integrada:** Usa dados do CLI para validação mais precisa
+- **Validação Integrada:** Usa dados do CLI cached para validação mais precisa
 
 ### **Serviços Auxiliares**
 
@@ -484,14 +488,17 @@ class CompletedEvent extends ProcessEvent {}
 5. **StateContent** exibe FileLoadingView
 
 ### **Fase 3: Carregamento**
-1. **FileRepositoryImpl.loadExcelFileWithProgress()** inicia
-2. Se arquivo <5MB: carregamento direto
-3. Se arquivo >=5MB: usa FileIsolateService
-4. **SpreadsheetDecoder** processa bytes do arquivo
-5. Localiza planilha "Layout" obrigatória
-6. Identifica cabeçalho com coluna "Contrato"
-7. Extrai headers, dados e pares Documento-Plano
-8. **BLoC** transita para FilePreviewState
+1. **BLoC** executa operações em paralelo:
+   - `IsolateService.loadExcelFileInIsolate()` - carrega Excel em isolate
+   - `repository.getAllData()` - única chamada CLI (`--get-all`) que retorna:
+     - Documentos e planos disponíveis
+     - Datas por documento
+     - Contas ativas/inativas
+2. **SpreadsheetDecoder** processa bytes do arquivo no isolate
+3. Localiza planilha "Layout" obrigatória
+4. Identifica cabeçalho com coluna "Contrato"
+5. Extrai headers, dados e pares Documento-Plano
+6. **BLoC** transita para FilePreviewState com dados completos
 
 ### **Fase 4: Pré-visualização**
 1. **StateContent** exibe FilePreviewView
@@ -647,8 +654,9 @@ if (headerRowIdx > 0) {
 ## Performance e Otimizações
 
 ### **Carregamento e Análise:**
+- **Única Chamada CLI:** `getAllData()` usa `--get-all` para obter todos os dados em 1 chamada (antes eram 3)
 - **Isolates:** Operações pesadas executadas em threads separadas
-- **Cache CLI:** Reutilização de dados do `--get-options` para evitar chamadas redundantes
+- **Cache CLI:** Reutilização de dados cached para evitar chamadas redundantes
 - **Análise Inteligente:** CLI identifica apenas dados válidos (não zerados)
 - **Paginação:** Visualização otimizada para arquivos com milhares de linhas
 
@@ -688,6 +696,7 @@ if (headerRowIdx > 0) {
 - **Método Unificado:** Eliminação da duplicação entre `validateFile()` e `validateFileWithCliData()`
 
 ### **Performance Otimizada**
+- **getAllData():** Consolidação de 3 chamadas CLI em 1 única (`--get-all`), reduzindo ~3s para ~1s
 - **Isolates:** Carregamento, validação e estatísticas em threads separadas
 - **Cache CLI:** Evita chamadas redundantes ao Python CLI
 - **Processamento Assíncrono:** UI sempre responsiva durante operações pesadas

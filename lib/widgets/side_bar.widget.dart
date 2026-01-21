@@ -1,11 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:br_service_ui/widgets/update_test_widget.dart';
 import 'package:br_service_ui/services/update_service.dart';
 import 'package:br_service_ui/widgets/update_notification_widget.dart';
-
-import 'output_dir_button.dart';
-import 'file_picker_widget.dart';
 
 class Sidebar extends StatefulWidget {
   const Sidebar();
@@ -17,11 +13,22 @@ class Sidebar extends StatefulWidget {
 class _SidebarState extends State<Sidebar> {
   UpdateInfo? _availableUpdate;
   bool _isChecking = false;
+  String _version = '';
 
   @override
   void initState() {
     super.initState();
+    _loadVersion();
     _checkForUpdates();
+  }
+
+  Future<void> _loadVersion() async {
+    final version = await UpdateService.currentVersion;
+    if (mounted) {
+      setState(() {
+        _version = version;
+      });
+    }
   }
 
   Future<void> _checkForUpdates() async {
@@ -108,7 +115,7 @@ class _SidebarState extends State<Sidebar> {
           ),
           const SizedBox(height: 10),
           Text(
-            '- 3. Nos filtros você pode selecionar os Documuentos que deseja exportar e as datas',
+            '- 3. Nos filtros você pode selecionar os Documentos que deseja exportar e as datas',
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w600,
@@ -183,7 +190,11 @@ class _SidebarState extends State<Sidebar> {
                 ],
               ),
             ),
-
+          Text(
+            'Versão $_version',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70),
+          ),
           const Divider(color: Colors.white70),
           const Text(
             'Desenvolvido por\nRikelmy R.',

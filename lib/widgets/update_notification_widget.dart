@@ -75,96 +75,91 @@ class _UpdateNotificationWidgetState extends State<UpdateNotificationWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _hasError ? Icons.error : Icons.system_update,
-                  color: _hasError ? Colors.red : Colors.green,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _hasError ? 'Erro na Atualização' : 'Nova Atualização',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        _hasError
-                            ? _status
-                            : 'Versão ${widget.updateInfo.version}',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            // Progresso ou status
-            if (_isUpdating) ...[
-              const SizedBox(height: 16),
-              Column(
-                children: [
-                  Text(_status, style: const TextStyle(fontSize: 14)),
-                  const SizedBox(height: 8),
-                  if (!_isInstalling && _downloadProgress > 0) ...[
-                    LinearProgressIndicator(value: _downloadProgress),
-                    const SizedBox(height: 4),
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _hasError ? Icons.error : Icons.system_update,
+                color: _hasError ? Colors.red : Colors.green,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      '${(_downloadProgress * 100).toInt()}%',
-                      style: const TextStyle(fontSize: 12),
+                      _hasError ? 'Erro na Atualização' : 'Nova Atualização',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ] else if (_isInstalling) ...[
-                    const LinearProgressIndicator(),
+                    Text(
+                      _hasError
+                          ? _status
+                          : 'Versão ${widget.updateInfo.version}',
+                    ),
                   ],
-                ],
+                ),
               ),
             ],
+          ),
 
+          // Progresso ou status
+          if (_isUpdating) ...[
             const SizedBox(height: 16),
-            Row(
+            Column(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        (_isUpdating && !_hasError) ? null : _handleDismiss,
-                    child: const Text('Fechar'),
+                Text(_status, style: const TextStyle(fontSize: 14)),
+                const SizedBox(height: 8),
+                if (!_isInstalling && _downloadProgress > 0) ...[
+                  LinearProgressIndicator(value: _downloadProgress),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${(_downloadProgress * 100).toInt()}%',
+                    style: const TextStyle(fontSize: 12)
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed:
-                        _isUpdating
-                            ? null
-                            : (_hasError ? _handleUpdate : _handleUpdate),
-                    child:
-                        _isUpdating
-                            ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                            : Text(
-                              _hasError ? 'Tentar Novamente' : 'Atualizar',
-                            ),
-                  ),
-                ),
+                ] else if (_isInstalling) ...[
+                  const LinearProgressIndicator(),
+                ],
               ],
             ),
           ],
-        ),
+
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed:
+                      (_isUpdating && !_hasError) ? null : _handleDismiss,
+                  child: const Text('Fechar'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed:
+                      _isUpdating
+                          ? null
+                          : (_hasError ? _handleUpdate : _handleUpdate),
+                  child:
+                      _isUpdating
+                          ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : Text(_hasError ? 'Tentar Novamente' : 'Atualizar'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

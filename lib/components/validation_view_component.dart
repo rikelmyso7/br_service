@@ -330,18 +330,7 @@ class _ValidationViewState extends State<ValidationView> {
                     ],
                   );
                 } else {
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    margin: const EdgeInsets.only(top: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'DEBUG: Filtros não exibidos - allValid: $allValid, hasFilters: $hasFilters',
-                      style: TextStyle(color: Colors.red.shade700),
-                    ),
-                  );
+                  return const SizedBox(height: 20);
                 }
               },
             ),

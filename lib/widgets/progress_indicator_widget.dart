@@ -23,7 +23,6 @@ class _ProgressIndicatorWidgetState extends State<ProgressIndicatorWidget>
   late AnimationController _pulseController;
   late AnimationController _progressController;
   late Animation<double> _pulseAnimation;
-  late Animation<double> _progressAnimation;
 
   @override
   void initState() {
@@ -42,10 +41,7 @@ class _ProgressIndicatorWidgetState extends State<ProgressIndicatorWidget>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    _progressAnimation = CurvedAnimation(
-      parent: _progressController,
-      curve: Curves.easeOutCubic,
-    );
+   
   }
 
   @override
