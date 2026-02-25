@@ -121,7 +121,7 @@ class _UpdateNotificationWidgetState extends State<UpdateNotificationWidget> {
                   const SizedBox(height: 4),
                   Text(
                     '${(_downloadProgress * 100).toInt()}%',
-                    style: const TextStyle(fontSize: 12)
+                    style: const TextStyle(fontSize: 12),
                   ),
                 ] else if (_isInstalling) ...[
                   const LinearProgressIndicator(),
@@ -154,7 +154,10 @@ class _UpdateNotificationWidgetState extends State<UpdateNotificationWidget> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                          : Text(_hasError ? 'Tentar Novamente' : 'Atualizar'),
+                          : Text(
+                            _hasError ? 'Tentar Novamente' : 'Atualizar',
+                            textAlign: TextAlign.center,
+                          ),
                 ),
               ),
             ],

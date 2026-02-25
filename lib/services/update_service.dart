@@ -5,7 +5,6 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive_io.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:process_run/process_run.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 /// Callback para atualizações de progresso do download
