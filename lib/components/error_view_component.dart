@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/events/file_events_bloc.dart';
@@ -11,6 +11,19 @@ class ErrorView extends StatelessWidget {
 
   const ErrorView({required this.message, this.details});
 
+  String get _fullText =>
+      details != null ? '$message\n\n$details' : message;
+
+  void _copyToClipboard(BuildContext context) {
+    Clipboard.setData(ClipboardData(text: _fullText));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Erro copiado para a área de transferência'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -21,9 +34,9 @@ class ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline, color: Colors.red, size: 72),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Erro no processamento',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: Colors.red,
@@ -39,7 +52,7 @@ class ErrorView extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      SelectableText(
                         message,
                         style: const TextStyle(
                           fontSize: 16,
@@ -50,13 +63,22 @@ class ErrorView extends StatelessWidget {
                       if (details != null) ...[
                         const SizedBox(height: 12),
                         const Divider(),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Detalhes técnicos:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Detalhes técnicos:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.copy, size: 18),
+                              tooltip: 'Copiar erro completo',
+                              onPressed: () => _copyToClipboard(context),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Container(
@@ -67,7 +89,7 @@ class ErrorView extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: SingleChildScrollView(
-                            child: Text(
+                            child: SelectableText(
                               details!,
                               style: const TextStyle(
                                 fontSize: 12,

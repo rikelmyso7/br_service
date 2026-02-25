@@ -1,19 +1,18 @@
+import 'dart:convert';
+import 'dart:developer' as dev;
 import 'dart:io';
-import 'package:br_service_ui/utils/format_cells_utils.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
+
+import '../repository/file_repository_impl.dart';
 
 class ExcelViewer extends StatefulWidget {
   final String filePath;
   final String sheetName;
-  final String? dateFormat;
 
   const ExcelViewer({
     Key? key,
     required this.filePath,
     this.sheetName = 'Layout',
-    this.dateFormat = 'dd/MM/yyyy',
   }) : super(key: key);
 
   @override
@@ -21,109 +20,88 @@ class ExcelViewer extends StatefulWidget {
 }
 
 class _ExcelViewerState extends State<ExcelViewer> {
-  late Future<_ExcelLoadResult> _load;
+  late Future<_PreviewData> _load;
 
   @override
   void initState() {
     super.initState();
-    _load = _loadExcel();
+    _load = _loadPreview();
   }
 
-  @override
-  void dispose() {
-    _load.then((result) => result.decoder); // Se a biblioteca suportar
-    super.dispose();
-  }
+  Future<_PreviewData> _loadPreview() async {
+    try {
+      final exe = await FileRepositoryImpl().getExecutable();
+      final exePath = exe.path;
+      dev.log('Carregando preview: ${widget.filePath}', name: 'ExcelViewer');
 
-  Future<_ExcelLoadResult> _loadExcel() async {
-    final bytes = await File(widget.filePath).readAsBytes();
-    final decoder = SpreadsheetDecoder.decodeBytes(bytes, update: true);
-
-    if (!decoder.tables.containsKey(widget.sheetName)) {
-      throw Exception(
-        'A aba "${widget.sheetName}" não foi encontrada no arquivo.',
+      final result = await Process.run(
+        exePath,
+        ['--input', widget.filePath, '--get-preview', '--quiet'],
+        runInShell: true,
+        environment: {'PYTHONIOENCODING': 'utf-8'},
       );
+
+      if (result.exitCode != 0) {
+        final msg = 'CLI --get-preview falhou (code=${result.exitCode}): ${result.stderr}';
+        dev.log(msg, name: 'ExcelViewer', level: 1000);
+        throw Exception(msg);
+      }
+
+      final raw = result.stdout.toString().trim();
+      final data = json.decode(raw) as Map<String, dynamic>;
+      if (data.containsKey('erro')) {
+        dev.log('Erro retornado pelo CLI: ${data['erro']}', name: 'ExcelViewer', level: 1000);
+        throw Exception(data['erro']);
+      }
+
+      final headers = (data['headers'] as List<dynamic>).cast<String>();
+      final rows = (data['rows'] as List<dynamic>)
+          .map((r) => (r as List<dynamic>).cast<String>())
+          .toList();
+
+      dev.log('Preview carregado: ${headers.length} colunas, ${rows.length} linhas', name: 'ExcelViewer');
+      return _PreviewData(headers: headers, rows: rows);
+    } catch (e, st) {
+      dev.log('Falha ao carregar preview', name: 'ExcelViewer', level: 1000, error: e, stackTrace: st);
+      rethrow;
     }
-
-    final table = decoder.tables[widget.sheetName]!;
-    if (table.rows.isEmpty) {
-      throw Exception('A aba "${widget.sheetName}" está vazia.');
-    }
-
-    // Detecta a primeira linha não-vazia como cabeçalho (robusto p/ seus layouts)
-    int headerRowIdx = table.rows.indexWhere(
-      (r) => r.any((c) => (c?.toString().trim() ?? '').isNotEmpty),
-    );
-    if (headerRowIdx < 0) headerRowIdx = 0;
-
-    final headers =
-        table.rows[headerRowIdx]
-            .map(
-              (cell) => formatCell(
-                cell,
-                dateFormat: widget.dateFormat ?? 'dd/MM/yyyy',
-              ),
-            )
-            .toList();
-
-    final firstDataRow = headerRowIdx + 1;
-    final totalDataRows = (table.rows.length - firstDataRow).clamp(
-      0,
-      table.rows.length,
-    );
-
-    return _ExcelLoadResult(
-      decoder: decoder,
-      table: table,
-      headers: headers,
-      headerRowIndex: headerRowIdx,
-      firstDataRowIndex: firstDataRow,
-      dataRowCount: totalDataRows,
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_ExcelLoadResult>(
+    return FutureBuilder<_PreviewData>(
       future: _load,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
+          return const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
           return _ErrorCard(
             message: 'Erro ao carregar arquivo',
             details: '${snap.error}',
-            onRetry: () => setState(() => _load = _loadExcel()),
+            onRetry: () => setState(() => _load = _loadPreview()),
           );
         }
 
         final res = snap.data!;
-        final source = _ExcelDataSource(
-          table: res.table,
-          headers: res.headers,
-          firstDataRowIndex: res.firstDataRowIndex,
-          totalRows: res.dataRowCount,
-          dateFormat: widget.dateFormat ?? 'dd/MM/yyyy',
-        );
+        final source = _PreviewDataSource(rows: res.rows, headers: res.headers);
 
-        final columns =
-            res.headers
-                .map(
-                  (h) => DataColumn(
-                    label: ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 120),
-                      child: Text(
-                        h.isEmpty ? '—' : h,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
+        final columns = res.headers
+            .map(
+              (h) => DataColumn(
+                label: ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 120),
+                  child: Text(
+                    h.isEmpty ? '—' : h,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                )
-                .toList();
+                ),
+              ),
+            )
+            .toList();
 
-        int rowsPerPage = _pickInitialRowsPerPage(res.dataRowCount);
+        final rowsPerPage = _pickInitialRowsPerPage(res.rows.length);
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
@@ -141,14 +119,10 @@ class _ExcelViewerState extends State<ExcelViewer> {
                   color: Colors.blue[50],
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.table_chart,
-                        size: 20,
-                        color: Colors.green[600],
-                      ),
+                      Icon(Icons.table_chart, size: 20, color: Colors.green[600]),
                       const SizedBox(width: 8),
                       Text(
-                        'Dados da planilha (${res.dataRowCount} registros)',
+                        'Dados da planilha (${res.rows.length} registros)',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -166,11 +140,7 @@ class _ExcelViewerState extends State<ExcelViewer> {
                 Expanded(
                   child: SingleChildScrollView(
                     child: SizedBox(
-                      // largura grande para permitir rolagem horizontal sem quebrar
-                      width: (res.headers.length * 140.0).clamp(
-                        600.0,
-                        double.infinity,
-                      ),
+                      width: (res.headers.length * 140.0).clamp(600.0, double.infinity),
                       child: Theme(
                         data: Theme.of(context).copyWith(
                           cardTheme: CardThemeData(margin: EdgeInsets.zero),
@@ -182,21 +152,9 @@ class _ExcelViewerState extends State<ExcelViewer> {
                           source: source,
                           initialFirstRowIndex: 0,
                           rowsPerPage: rowsPerPage,
-                          availableRowsPerPage: const [
-                            10,
-                            25,
-                            50,
-                            100,
-                            200,
-                            500,
-                          ],
+                          availableRowsPerPage: const [10, 25, 50, 100, 200, 500],
                           onRowsPerPageChanged: (v) {
-                            if (v != null) {
-                              setState(() {
-                                // recria a tabela apenas com outra densidade de página
-                                // (a fonte continua a mesma)
-                              });
-                            }
+                            if (v != null) setState(() {});
                           },
                           showFirstLastButtons: true,
                           columnSpacing: 24,
@@ -218,61 +176,28 @@ class _ExcelViewerState extends State<ExcelViewer> {
   }
 
   int _pickInitialRowsPerPage(int total) {
-    // Lazy loading: começa com páginas menores para arquivos grandes
     if (total <= 25) return 25;
     if (total <= 100) return 50;
-    if (total <= 1000) return 100;
-    // Arquivos muito grandes: páginas menores para melhor performance
     return 100;
   }
 }
 
-class _ExcelLoadResult {
-  final SpreadsheetDecoder decoder;
-  final SpreadsheetTable table;
+class _PreviewData {
   final List<String> headers;
-  final int headerRowIndex;
-  final int firstDataRowIndex;
-  final int dataRowCount;
-
-  _ExcelLoadResult({
-    required this.decoder,
-    required this.table,
-    required this.headers,
-    required this.headerRowIndex,
-    required this.firstDataRowIndex,
-    required this.dataRowCount,
-  });
+  final List<List<String>> rows;
+  _PreviewData({required this.headers, required this.rows});
 }
 
-/// DataTableSource que entrega somente as linhas da página atual.
-/// Não materializa *widgets* para tudo — apenas para os índices visíveis.
-class _ExcelDataSource extends DataTableSource {
-  final SpreadsheetTable table;
+class _PreviewDataSource extends DataTableSource {
   final List<String> headers;
-  final int firstDataRowIndex;
-  final int totalRows;
-  final String dateFormat;
+  final List<List<String>> rows;
 
-  _ExcelDataSource({
-    required this.table,
-    required this.headers,
-    required this.firstDataRowIndex,
-    required this.totalRows,
-    this.dateFormat = 'dd/MM/yyyy',
-  });
-
-  // Cache LRU simples por índice de linha da planilha → valores já tratados
-  final Map<int, List<String>> _rowCache = {};
-  static const int _maxCache = 1000; // ajuste conforme necessário
+  _PreviewDataSource({required this.headers, required this.rows});
 
   @override
   DataRow? getRow(int index) {
-    if (index < 0 || index >= rowCount) return null;
-
-    final sheetIndex = firstDataRowIndex + index;
-    final row = _getRowValues(sheetIndex);
-
+    if (index < 0 || index >= rows.length) return null;
+    final row = rows[index];
     return DataRow.byIndex(
       index: index,
       color: MaterialStateProperty.resolveWith<Color?>((states) {
@@ -297,29 +222,11 @@ class _ExcelDataSource extends DataTableSource {
     );
   }
 
-  List<String> _getRowValues(int sheetIndex) {
-    final cached = _rowCache[sheetIndex];
-    if (cached != null) return cached;
-
-    final raw = table.rows[sheetIndex];
-    final values = List<String>.generate(headers.length, (i) {
-      final cell = (i < raw.length) ? raw[i] : null;
-      return formatCell(cell, dateFormat: dateFormat);
-    });
-
-    // guarda em cache com política simples
-    _rowCache[sheetIndex] = values;
-    if (_rowCache.length > _maxCache) {
-      _rowCache.remove(_rowCache.keys.first);
-    }
-    return values;
-  }
-
   @override
   bool get isRowCountApproximate => false;
 
   @override
-  int get rowCount => totalRows;
+  int get rowCount => rows.length;
 
   @override
   int get selectedRowCount => 0;
@@ -347,10 +254,7 @@ class _ErrorCard extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 message,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               if (details != null) ...[
                 const SizedBox(height: 8),

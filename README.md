@@ -59,7 +59,7 @@ lib/
 
 - **BLoC Pattern**: Gerenciamento de estado com `flutter_bloc`
 - **Repository Pattern**: Abstração do acesso ao CLI
-- **Isolates**: Processamento pesado em threads separadas
+- **Daemon IPC**: Processo CLI persistente via stdin/stdout, eliminando o cold start do PyInstaller (~1-3s por invocação)
 
 ## Fluxo da Aplicação
 
@@ -79,15 +79,19 @@ lib/
                     └─────────────┘
 ```
 
-| Etapa | Descrição |
-|-------|-----------|
-| **Início** | Tela inicial com drag-and-drop ou seleção de arquivo |
-| **Carregar** | Leitura do Excel + análise CLI em paralelo |
-| **Preview** | Visualização dos dados e seleção de contas |
-| **Validação** | Verifica estrutura obrigatória (Layout, colunas, documentos) |
-| **Filtros** | Seleção de documentos e datas para processar |
-| **Processar** | CLI extrai dados com progresso em tempo real |
-| **Concluído** | Arquivos gerados, botão para abrir pasta de saída |
+| Etapa                 | Descrição                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| **Início**     | Tela inicial com drag-and-drop ou seleção de arquivo                                              |
+| **Carregar**    | Preview da planilha (`--get-preview`) + análise completa (`--get-all`) via daemon, em paralelo |
+| **Preview**     | Visualização dos dados e seleção de contas ativas/inativas                                      |
+| **Validação** | Verifica estrutura obrigatória (colunas, documentos, datas) via daemon                             |
+| **Filtros**     | Seleção de documentos e datas para processar                                                      |
+| **Processar**   | CLI extrai dados com progresso em tempo real (eventos NDJSON)                                       |
+| **Concluído**  | Arquivos gerados, botão para abrir pasta de saída                                                 |
+
+### Daemon IPC — Serialização de Writes
+
+O `BRServiceDaemon` serializa todos os writes ao `stdin` do processo via `_writeChain` (uma `Future` encadeada), evitando o erro `Bad state: StreamSink is bound to a stream` quando múltiplas chamadas concorrentes (ex: `Future.wait`) tentam escrever simultaneamente. As respostas são emparelhadas com os callers via `Queue<Completer<String>>` (FIFO).
 
 ### Estados do BLoC
 
@@ -100,33 +104,55 @@ InitialState → FileLoadingState → FilePreviewState → ValidationState
 
 ## Dependências Principais
 
-| Pacote                  | Uso                        |
-| ----------------------- | -------------------------- |
-| `flutter_bloc`        | Gerenciamento de estado    |
-| `spreadsheet_decoder` | Leitura de arquivos Excel  |
-| `file_picker`         | Seleção de arquivos      |
-| `rxdart`              | Streams reativos           |
-| `window_manager`      | Controle da janela desktop |
-| `desktop_drop`        | Drag & drop de arquivos    |
+| Pacote             | Uso                                       |
+| ------------------ | ----------------------------------------- |
+| `flutter_bloc`   | Gerenciamento de estado                   |
+| `file_picker`    | Seleção de arquivos                     |
+| `rxdart`         | Streams reativos                          |
+| `window_manager` | Controle da janela desktop                |
+| `desktop_drop`   | Drag & drop de arquivos                   |
+| `logging`        | Logs estruturados (visíveis no DevTools) |
 
-## CLI
+> `spreadsheet_decoder` foi removido — a leitura da planilha é feita pelo daemon CLI via `--get-preview`.
 
-O processamento dos dados é feito pelo executável `br_service_cli.exe` que suporta os seguintes comandos:
+## CLI e Daemon
+
+O processamento dos dados é feito pelo executável `br_service_cli.exe`. A UI inicia o processo em **modo daemon** no startup, eliminando o cold start do PyInstaller:
 
 ```bash
-# Análise completa (opções + datas + contas)
-br_service_cli --input arquivo.xlsx --get-all --quiet
+# Modo daemon (iniciado automaticamente pela UI no startup)
+br_service_cli.exe --daemon
+# Aguarda DAEMON_READY no stderr, depois aceita comandos JSON via stdin
 
-# Apenas opções de documentos/planos
-br_service_cli --input arquivo.xlsx --get-options --quiet
+# Análise completa (opções + datas + contas)
+br_service_cli.exe --input arquivo.xlsx --get-all --quiet
+
+# Preview da planilha para exibição na UI
+br_service_cli.exe --input arquivo.xlsx --get-preview --quiet
 
 # Processamento com filtros
-br_service_cli --input arquivo.xlsx --output ./saida --documentos "DOC1,DOC2" --datas "01/01/2024,02/01/2024"
+br_service_cli.exe --input arquivo.xlsx --output ./saida --documentos "DOC1,DOC2" --datas "01/01/2024,02/01/2024"
 ```
+
+### Protocolo Daemon (stdin/stdout NDJSON)
+
+A UI se comunica com o daemon via JSON linha a linha:
+
+```
+→ {"cmd": "get-all",     "input": "C:\\arquivo.xlsx"}
+← {"documentos": [...], "planos_por_documento": {...}, "datas": [...], ...}
+
+→ {"cmd": "get-preview", "input": "C:\\arquivo.xlsx"}
+← {"headers": [...], "rows": [[...]]}
+```
+
+O executável é extraído automaticamente dos assets em `%TEMP%` na primeira execução e reutilizado nas subsequentes. Erros de texto no app são **selecionáveis** para cópia.
 
 ## Versão
 
-Versão atual: **1.4.4**
+Versão atual: **1.5.1**
+
+Veja o histórico completo de alterações em [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Build
 

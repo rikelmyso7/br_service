@@ -43,11 +43,11 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
         message: 'Carregando arquivo e executando análise',
       ));
 
-      // Executa carregamento Excel + getAllData em paralelo
-      // getAllData combina get-options + get-datas + get-contas em UMA única chamada CLI
-      log.info('Executando operações em paralelo: carregamento (isolate) + getAllData CLI');
+      // Com o daemon já rodando, ambas as chamadas são rápidas e vão pela fila do daemon.
+      // Rodamos em paralelo do ponto de vista do Dart — o daemon as processa em sequência.
+      log.info('Carregando arquivo via daemon (get-all + get-preview)');
       final results = await Future.wait([
-        IsolateService.loadExcelFileInIsolate(event.filePath),
+        _repository.loadExcelFile(event.filePath),
         _repository.getAllData(event.filePath),
       ]);
 
@@ -197,35 +197,22 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
 
   // Reconstrói ProcessingFilters a partir de dados serializados do isolate
   ProcessingFilters _parseProcessingFiltersFromStats(Map<String, dynamic> detailedStats) {
-    print('🔍 _parseProcessingFiltersFromStats iniciado');
-    print('   🗝️ detailedStats keys: ${detailedStats.keys.toList()}');
-    
     final filtersData = detailedStats['processingFilters'] as Map<String, dynamic>? ?? {};
-    print('   🎯 filtersData keys: ${filtersData.keys.toList()}');
-    print('   📄 availableDocuments raw: ${filtersData['availableDocuments']}');
-    print('   📅 availableDates raw: ${filtersData['availableDates']}');
-    
-    final availableDocPlanosData = filtersData['availableDocPlanos'] as List<dynamic>? ?? [];
-    print('   📋 availableDocPlanosData length: ${availableDocPlanosData.length}');
-    
-    final availableDocPlanos = availableDocPlanosData.map((item) {
+
+    final availableDocPlanos =
+        ((filtersData['availableDocPlanos'] as List<dynamic>?) ?? []).map((item) {
       final map = item as Map<String, dynamic>;
       return DocPlano(map['documento'] as String, map['plano'] as String);
     }).toList();
-    
-    // Extrai datesByDocument corretamente dos dados
+
     final datesByDocumentRaw = filtersData['datesByDocument'] as Map<String, dynamic>? ?? {};
-    print('   📋 datesByDocument raw keys: ${datesByDocumentRaw.keys.toList()}');
-    
     final Map<String, List<String>> datesByDocument = {};
     datesByDocumentRaw.forEach((key, value) {
       if (value is List) {
         datesByDocument[key] = (value as List<dynamic>).cast<String>();
       }
     });
-    print('   📋 datesByDocument processed: ${datesByDocument.keys.length} documentos');
 
-    // Extrai recordCountsByDocument
     final recordCountsRaw = filtersData['recordCountsByDocument'] as Map<String, dynamic>? ?? {};
     final Map<String, int> recordCountsByDocument = {};
     recordCountsRaw.forEach((key, value) {
@@ -235,9 +222,8 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
         recordCountsByDocument[key] = value.toInt();
       }
     });
-    print('   📊 recordCountsByDocument: ${recordCountsByDocument.length} documentos');
 
-    final result = ProcessingFilters(
+    return ProcessingFilters(
       selectedDocuments: (filtersData['selectedDocuments'] as List<dynamic>?)?.cast<String>() ?? [],
       selectedDates: (filtersData['selectedDates'] as List<dynamic>?)?.cast<String>() ?? [],
       availableDocuments: (filtersData['availableDocuments'] as List<dynamic>?)?.cast<String>() ?? [],
@@ -246,13 +232,6 @@ class FileProcessorBloc extends Bloc<FileProcessorEvent, FileProcessorState> {
       datesByDocument: datesByDocument,
       recordCountsByDocument: recordCountsByDocument,
     );
-    
-    print('✅ ProcessingFilters construído:');
-    print('   📄 ${result.availableDocuments.length} docs: ${result.availableDocuments}');
-    print('   📅 ${result.availableDates.length} dates: ${result.availableDates.take(3).toList()}...');
-    print('   📋 ${result.datesByDocument.keys.length} docs com datas: ${result.datesByDocument.keys.take(3).toList()}');
-    
-    return result;
   }
 
   // Extrai InvalidDocPlanos dos dados detalhados

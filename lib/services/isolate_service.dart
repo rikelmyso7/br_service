@@ -9,8 +9,9 @@ import '../repository/file_repository_impl.dart';
 class IsolateParams {
   final String filePath;
   final SendPort sendPort;
-  
-  IsolateParams(this.filePath, this.sendPort);
+  final String? executablePath;
+
+  IsolateParams(this.filePath, this.sendPort, {this.executablePath});
 }
 
 /// Parâmetros específicos para validação
@@ -36,10 +37,17 @@ class IsolateResult<T> {
 class IsolateService {
   
   /// Carrega arquivo Excel em isolate separado
-  static Future<ExcelData> loadExcelFileInIsolate(String filePath) async {
+  static Future<ExcelData> loadExcelFileInIsolate(
+    String filePath, {
+    String? executablePath,
+  }) async {
     final receivePort = ReceivePort();
-    final params = IsolateParams(filePath, receivePort.sendPort);
-    
+    final params = IsolateParams(
+      filePath,
+      receivePort.sendPort,
+      executablePath: executablePath,
+    );
+
     await Isolate.spawn(_loadExcelFileIsolate, params);
     
     final result = await receivePort.first as IsolateResult<ExcelData>;
@@ -90,7 +98,10 @@ class IsolateService {
   static void _loadExcelFileIsolate(IsolateParams params) async {
     try {
       final repository = FileRepositoryImpl();
-      final excelData = await repository.loadExcelFile(params.filePath);
+      final excelData = await repository.loadExcelFile(
+        params.filePath,
+        executablePath: params.executablePath,
+      );
       params.sendPort.send(IsolateResult.success(excelData));
     } catch (e) {
       params.sendPort.send(IsolateResult<ExcelData>.error(e.toString()));
